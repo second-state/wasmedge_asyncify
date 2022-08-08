@@ -1,3 +1,5 @@
+use std::path::Path;
+
 use wasmedge_asyncify::*;
 
 fn async_host_sleep(_linker: &mut AsyncLinker, _args: Vec<types::WasmVal>) -> ResultFuture {
@@ -28,9 +30,12 @@ async fn main() {
         .unwrap();
 
     // read wasm
-    let wasm = std::fs::read("wasm/hello.wasm").unwrap();
+    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap();
+    let wasm_path = Path::new(&manifest_dir).join("../../wasm/hello.wasm");
+    println!("load wasm from {:?}", wasm_path);
+    let wasm = std::fs::read(wasm_path).unwrap();
 
-    // load wasm
+    // load wasm from bytes
     let module = builder.load_wasm(&wasm).unwrap();
 
     // instance wasm
