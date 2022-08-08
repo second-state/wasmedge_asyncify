@@ -1,4 +1,11 @@
-use std::{ffi::c_void, marker::PhantomPinned, pin::Pin, ptr::NonNull, task::Waker};
+use std::{
+    ffi::c_void,
+    marker::PhantomPinned,
+    ops::{Range, RangeBounds},
+    pin::Pin,
+    ptr::NonNull,
+    task::Waker,
+};
 
 use wasmedge_types::{
     error::{CoreCommonError, CoreError, WasmEdgeError},
@@ -27,6 +34,11 @@ impl Drop for AsyncFutureList {
             std::mem::drop(futures);
         }
     }
+}
+
+fn unreachable() -> WasmEdgeError {
+    use wasmedge_types::error;
+    WasmEdgeError::Core(CoreError::Execution(error::CoreExecutionError::Unreachable))
 }
 
 pub struct AsyncLinker {
@@ -68,6 +80,37 @@ impl AsyncLinker {
             linker: self,
             name: name.to_string(),
             args,
+        }
+    }
+
+    pub fn get_memory<'a>(
+        &'a self,
+        name: &str,
+        offset: usize,
+        len: usize,
+    ) -> WasmEdgeResult<&'a [u8]> {
+        let inst = self.inst.as_ref().ok_or(unreachable())?;
+        let memory = inst.get_memory(name)?;
+
+        unsafe {
+            let ptr = memory.data_pointer_raw(offset, len)?;
+
+            Ok(std::slice::from_raw_parts(ptr, len))
+        }
+    }
+
+    pub fn get_mut_memory<'a>(
+        &'a mut self,
+        name: &str,
+        offset: usize,
+        len: usize,
+    ) -> WasmEdgeResult<&'a mut [u8]> {
+        let inst = self.inst.as_ref().ok_or(unreachable())?;
+        let mut memory = inst.get_memory(name)?;
+
+        unsafe {
+            let ptr = memory.data_pointer_mut_raw(offset, len)?;
+            Ok(std::slice::from_raw_parts_mut(ptr, len))
         }
     }
 
