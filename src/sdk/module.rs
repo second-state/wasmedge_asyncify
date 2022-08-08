@@ -71,12 +71,21 @@ impl AsyncImportModuleBuilder<'_, '_> {
         name: &str,
         ty: (Vec<ValType>, Vec<ValType>),
         real_fn: super::AsyncFn,
-        cost: u64,
     ) -> WasmEdgeResult<()> {
         self.import_obj
-            .add_async_func(name, self.linker_ctx, ty, real_fn, cost)?;
+            .add_async_func(name, self.linker_ctx, ty, real_fn, 0)?;
         self.async_fn_name
             .push(format!("{}.{}", self.import_obj.name, name));
         Ok(())
+    }
+
+    pub fn add_func(
+        &mut self,
+        name: &str,
+        ty: (Vec<ValType>, Vec<ValType>),
+        real_fn: fn(&mut AsyncLinker, &[WasmVal]) -> WasmEdgeResult<Vec<WasmVal>>,
+    ) -> WasmEdgeResult<()> {
+        self.import_obj
+            .add_func(name, self.linker_ctx, ty, real_fn, 0)
     }
 }

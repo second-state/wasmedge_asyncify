@@ -1,6 +1,7 @@
 //! Defines WasmEdge Instance and other relevant types.
 
 use std::ffi::CString;
+use std::os::raw::c_char;
 use wasmedge_sys::ffi;
 use wasmedge_types::error::{InstanceError, WasmEdgeError};
 use wasmedge_types::WasmEdgeResult;
@@ -123,7 +124,7 @@ impl ImportModule {
             }
             r
         }
-        fn cstring_vec_to_ptr(s: &[CString]) -> Vec<*const std::ffi::c_char> {
+        fn cstring_vec_to_ptr(s: &[CString]) -> Vec<*const c_char> {
             let mut r = vec![];
             for cs in s {
                 r.push(cs.as_ptr())

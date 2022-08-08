@@ -21,9 +21,17 @@ impl Config {
         let ctx = unsafe { ffi::WasmEdge_ConfigureCreate() };
         match ctx.is_null() {
             true => Err(WasmEdgeError::ConfigCreate),
-            false => Ok(Self {
-                inner: InnerConfig(ctx),
-            }),
+            false => {
+                let mut config = Config {
+                    inner: InnerConfig(ctx),
+                };
+
+                config.bulk_memory_operations(true);
+                config.multi_memories(true);
+                config.wasi(true);
+
+                Ok(config)
+            }
         }
     }
 
