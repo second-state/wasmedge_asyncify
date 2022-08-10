@@ -22,7 +22,7 @@ impl ImportModule {
     ) -> WasmEdgeResult<()> {
         use super::instance::function::wrapper_async_fn;
 
-        let func_name = WasmEdgeString::new(name);
+        let func_name = WasmEdgeString::new(name)?;
         unsafe {
             let func =
                 Function::custom_create(ty, wrapper_async_fn, real_fn as *mut _, data, cost)?;
@@ -45,7 +45,7 @@ impl ImportModule {
     ) -> WasmEdgeResult<()> {
         use super::instance::function::wrapper_fn;
 
-        let func_name = WasmEdgeString::new(name);
+        let func_name = WasmEdgeString::new(name)?;
         unsafe {
             let func = Function::custom_create(ty, wrapper_fn, real_fn as *mut _, data, cost)?;
             ffi::WasmEdge_ModuleInstanceAddFunction(

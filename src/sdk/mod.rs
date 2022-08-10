@@ -1,5 +1,8 @@
 use crate::core::types::WasmVal;
 
+#[cfg(feature = "aot")]
+mod aot;
+
 mod instance;
 mod linker;
 mod module;
@@ -11,3 +14,5 @@ pub type AsyncFn = for<'a> fn(&'a mut linker::AsyncLinker, Vec<WasmVal>) -> Resu
 pub use instance::function::WasmEdgeResultFuture;
 pub use linker::{AsLinker, AsyncLinker, AsyncLinkerBuilder};
 pub use module::AsyncImportModuleBuilder;
+
+pub use aot::{AotCompiler, AotConfig, CompilerOptimizationLevel};

@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use wasmedge_types::error::WasmEdgeError;
 
 use super::config::Config;
@@ -80,36 +82,40 @@ impl Loader {
         }
     }
 
-    pub fn load_async_module_from_bytes<B: AsRef<str>, I: IntoIterator<Item = B>>(
+    pub fn pass_async_module_from_bytes<'a, B: AsRef<str>, I: IntoIterator<Item = B>>(
         &mut self,
-        wasm: &[u8],
+        wasm: &'a [u8],
         passes: I,
         codegen_config: &CodegenConfig,
-    ) -> Result<AstModule, WasmEdgeError> {
+    ) -> Result<Cow<'a, [u8]>, WasmEdgeError> {
         let mut module = binaryen::Module::read(wasm).map_err(|_| WasmEdgeError::ModuleCreate)?;
 
-        // skip run start on init
-        {
-            if let Some(start) = module.get_start() {
-                let global_ref = module.add_global("start_initialized", true, 0_i32).unwrap();
-                let new_body = module.binaryen_if(
-                    module.binaryen_get_global(global_ref),
-                    start.body(),
-                    module.binaryen_set_global(global_ref, module.binaryen_const_value(1_i32)),
-                );
-                start.set_body(new_body);
-                module
-                    .add_function_export(&start, "__original_start")
-                    .unwrap();
+        if module.get_export("asyncify_get_state").unwrap().is_null() {
+            // skip run start on init
+            {
+                if let Some(start) = module.get_start() {
+                    let global_ref = module.add_global("start_initialized", true, 0_i32).unwrap();
+                    let new_body = module.binaryen_if(
+                        module.binaryen_get_global(global_ref),
+                        start.body(),
+                        module.binaryen_set_global(global_ref, module.binaryen_const_value(1_i32)),
+                    );
+                    start.set_body(new_body);
+                    module
+                        .add_function_export(&start, "__original_start")
+                        .unwrap();
+                }
             }
+
+            module
+                .run_optimization_passes(passes, &codegen_config)
+                .map_err(|_| WasmEdgeError::ModuleCreate)?;
+
+            let new_wasm = module.write();
+            Ok(Cow::Owned(new_wasm))
+        } else {
+            Ok(Cow::Borrowed(wasm))
         }
-
-        module
-            .run_optimization_passes(passes, &codegen_config)
-            .map_err(|_| WasmEdgeError::ModuleCreate)?;
-
-        let new_wasm = module.write();
-        self.load_module_from_bytes(&new_wasm)
     }
 }
 

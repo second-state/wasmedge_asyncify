@@ -15,8 +15,10 @@ tokio = { version = "1", features = ["full"] }
 
 
 [workspace]
-members = ["examples/hello", "examples/memory"]
+members = ["examples/hello", "examples/memory", "examples/aot"]
 
 
 [features]
+default = ["aot"]
+aot = []
 ffi = []

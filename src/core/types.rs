@@ -1,7 +1,7 @@
 use std::ffi::CString;
 
 use wasmedge_sys::ffi;
-use wasmedge_types::ValType;
+use wasmedge_types::{ValType, WasmEdgeResult};
 
 use super::instance::function::{FuncRef, InnerFunc};
 
@@ -16,13 +16,13 @@ impl Drop for InnerWasmEdgeString {
     }
 }
 impl WasmEdgeString {
-    pub fn new(s: &str) -> Self {
-        let cs = CString::new(s).unwrap_or_default();
+    pub fn new(s: &str) -> WasmEdgeResult<Self> {
+        let cs = CString::new(s)?;
         let ctx = unsafe { ffi::WasmEdge_StringCreateByCString(cs.as_ptr()) };
 
-        Self {
+        Ok(Self {
             inner: InnerWasmEdgeString(ctx),
-        }
+        })
     }
     pub(crate) fn as_raw(&self) -> ffi::WasmEdge_String {
         self.inner.0

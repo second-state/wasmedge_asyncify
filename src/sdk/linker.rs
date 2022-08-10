@@ -1,11 +1,4 @@
-use std::{
-    ffi::c_void,
-    marker::PhantomPinned,
-    ops::{Range, RangeBounds},
-    pin::Pin,
-    ptr::NonNull,
-    task::Waker,
-};
+use std::{borrow::Cow, ffi::c_void, marker::PhantomPinned, pin::Pin, ptr::NonNull, task::Waker};
 
 use wasmedge_types::{
     error::{CoreCommonError, CoreError, WasmEdgeError},
@@ -172,9 +165,9 @@ impl AsLinker for Pin<Box<AsyncLinker>> {
 }
 
 pub struct AsyncLinkerBuilder {
-    linker: Box<AsyncLinker>,
-    loader: Loader,
-    async_fn_name: Vec<String>,
+    pub(crate) linker: Box<AsyncLinker>,
+    pub(crate) loader: Loader,
+    pub(crate) async_fn_name: Vec<String>,
 }
 
 impl AsyncLinkerBuilder {
@@ -224,7 +217,10 @@ impl AsyncLinkerBuilder {
         Ok(())
     }
 
-    pub fn load_wasm(&mut self, wasm: &[u8]) -> WasmEdgeResult<AstModule> {
+    pub(crate) fn pass_asyncify_wasm<'a>(
+        &mut self,
+        wasm: &'a [u8],
+    ) -> WasmEdgeResult<Cow<'a, [u8]>> {
         let AsyncLinkerBuilder {
             async_fn_name,
             loader,
@@ -238,9 +234,13 @@ impl AsyncLinkerBuilder {
         codegen_config
             .pass_argument
             .push(("asyncify-imports".to_string(), asyncify_imports));
-        let ast_module =
-            loader.load_async_module_from_bytes(wasm, ["asyncify", "strip"], &codegen_config)?;
-        Ok(ast_module)
+
+        loader.pass_async_module_from_bytes(wasm, ["asyncify", "strip"], &codegen_config)
+    }
+
+    pub fn load_wasm(&mut self, wasm: &[u8]) -> WasmEdgeResult<AstModule> {
+        let new_wasm = self.pass_asyncify_wasm(wasm)?;
+        self.loader.load_module_from_bytes(&new_wasm)
     }
 
     pub fn instance(self, module: &AstModule) -> WasmEdgeResult<Pin<Box<AsyncLinker>>> {

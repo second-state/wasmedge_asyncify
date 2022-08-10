@@ -1,3 +1,4 @@
+use std::{ffi::CString, os::unix::ffi::OsStrExt, path::Path};
 use wasmedge_sys::ffi::{WasmEdge_Result, WasmEdge_ResultGetCode, WasmEdge_ResultOK};
 use wasmedge_types::{
     error::{
@@ -6,6 +7,21 @@ use wasmedge_types::{
     },
     WasmEdgeResult,
 };
+
+#[cfg(unix)]
+pub(crate) fn path_to_cstring(path: &Path) -> WasmEdgeResult<CString> {
+    Ok(CString::new(path.as_os_str().as_bytes())?)
+}
+
+#[cfg(windows)]
+pub(crate) fn path_to_cstring(path: &Path) -> WasmEdgeResult<CString> {
+    match path.to_str() {
+        Some(s) => Ok(CString::new(s)?),
+        None => Err(WasmEdgeError::WindowsPathConversion(
+            path.to_string_lossy().to_string(),
+        )),
+    }
+}
 
 pub(crate) fn check(result: WasmEdge_Result) -> WasmEdgeResult<()> {
     let code = unsafe {

@@ -98,7 +98,7 @@ pub struct ImportModule {
 
 impl ImportModule {
     pub fn create<S: AsRef<str>>(name: S) -> WasmEdgeResult<Self> {
-        let raw_name = WasmEdgeString::new(name.as_ref());
+        let raw_name = WasmEdgeString::new(name.as_ref())?;
         let ctx = unsafe { ffi::WasmEdge_ModuleInstanceCreate(raw_name.as_raw()) };
 
         match ctx.is_null() {
@@ -176,7 +176,7 @@ impl AsInnerInstance for ImportModule {
 
 impl<T: AsInnerInstance> AsInstance for T {
     fn get_func(&self, name: impl AsRef<str>) -> WasmEdgeResult<FuncRef> {
-        let func_name = WasmEdgeString::new(name.as_ref());
+        let func_name = WasmEdgeString::new(name.as_ref())?;
         let func_ctx = unsafe {
             ffi::WasmEdge_ModuleInstanceFindFunction(self.get_mut_ptr(), func_name.as_raw())
         };
@@ -191,7 +191,7 @@ impl<T: AsInnerInstance> AsInstance for T {
     }
 
     fn get_memory(&self, name: &str) -> WasmEdgeResult<Memory> {
-        let mem_name: WasmEdgeString = WasmEdgeString::new(name);
+        let mem_name: WasmEdgeString = WasmEdgeString::new(name)?;
         let ctx = unsafe {
             ffi::WasmEdge_ModuleInstanceFindMemory(self.get_mut_ptr(), mem_name.as_raw())
         };
