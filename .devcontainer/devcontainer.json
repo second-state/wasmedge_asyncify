@@ -1,0 +1,16 @@
+{
+    "name": "wasmedge-asyncify dev environment",
+    "dockerFile": "Dockerfile",
+    // Set *default* container specific settings.json values on container create.
+    "settings": {
+        "lldb.executable": "/usr/bin/lldb"
+    },
+    // Add the IDs of extensions you want installed when the container is created.
+    "extensions": [
+        "ms-vscode.cpptools",
+        "serayuzgur.crates",
+        "tamasfe.even-better-toml",
+        "mhutchie.git-graph",
+        "rust-lang.rust-analyzer"
+    ]
+}
