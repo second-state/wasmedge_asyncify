@@ -48,6 +48,7 @@ fn aot_to_file() {
     let wasm = read_wasm();
     let mut builder = create_builder();
     let config = AotConfig::create().unwrap();
+
     let mut compiler = AotCompiler::create(&config).unwrap();
 
     let out_path = aot_out_path();

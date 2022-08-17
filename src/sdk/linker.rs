@@ -2,7 +2,7 @@ use std::{borrow::Cow, ffi::c_void, marker::PhantomPinned, pin::Pin, ptr::NonNul
 
 use wasmedge_types::{
     error::{CoreCommonError, CoreError, WasmEdgeError},
-    WasmEdgeResult,
+    ValType, WasmEdgeResult,
 };
 
 use crate::core::{
@@ -76,34 +76,40 @@ impl AsyncLinker {
         }
     }
 
-    pub fn get_memory<'a>(
+    pub fn wasi_get_native_handle(&self, wasi_fd: i32) -> Option<u64> {
+        self.executor.wasi_get_native_handle(wasi_fd)
+    }
+
+    pub fn get_memory<'a, T: Sized>(
         &'a self,
         name: &str,
         offset: usize,
-        len: usize,
-    ) -> WasmEdgeResult<&'a [u8]> {
+        size: usize,
+    ) -> WasmEdgeResult<&'a [T]> {
         let inst = self.inst.as_ref().ok_or(unreachable())?;
         let memory = inst.get_memory(name)?;
 
         unsafe {
-            let ptr = memory.data_pointer_raw(offset, len)?;
+            let len = std::mem::size_of::<T>() * size;
+            let ptr = memory.data_pointer_raw(offset, len)? as *const T;
 
-            Ok(std::slice::from_raw_parts(ptr, len))
+            Ok(std::slice::from_raw_parts(ptr, size))
         }
     }
 
-    pub fn get_mut_memory<'a>(
+    pub fn get_memory_mut<'a, T: Sized>(
         &'a mut self,
         name: &str,
         offset: usize,
-        len: usize,
-    ) -> WasmEdgeResult<&'a mut [u8]> {
+        size: usize,
+    ) -> WasmEdgeResult<&'a mut [T]> {
         let inst = self.inst.as_ref().ok_or(unreachable())?;
         let mut memory = inst.get_memory(name)?;
 
         unsafe {
-            let ptr = memory.data_pointer_mut_raw(offset, len)?;
-            Ok(std::slice::from_raw_parts_mut(ptr, len))
+            let len = std::mem::size_of::<T>() * size;
+            let ptr = memory.data_pointer_mut_raw(offset, len)? as *mut _;
+            Ok(std::slice::from_raw_parts_mut(ptr, size))
         }
     }
 
@@ -185,8 +191,20 @@ impl AsyncLinkerBuilder {
         envs: &[S],
         preopens: &[S],
     ) -> Result<(), WasmEdgeError> {
-        let import_obj = ImportModule::create_wasi(args, envs, preopens)?;
-        self.linker.executor.register_import_object(import_obj)?;
+        let mut wasi = ImportModule::create_wasi(args, envs, preopens)?;
+        wasi.add_async_func(
+            "poll_oneoff",
+            &mut self.linker,
+            (
+                vec![ValType::I32, ValType::I32, ValType::I32, ValType::I32],
+                vec![ValType::I32],
+            ),
+            crate::sdk::wasi::async_poll_oneoff,
+            0,
+        )?;
+
+        self.linker.executor.register_wasi_object(wasi)?;
+
         Ok(())
     }
 

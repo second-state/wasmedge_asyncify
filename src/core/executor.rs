@@ -18,6 +18,7 @@ use wasmedge_sys::ffi;
 pub struct Executor {
     pub(crate) inner: InnerExecutor,
     pub(crate) inner_store: InnerStore,
+    pub(crate) wasi: Option<ImportModule>,
     imports: HashMap<String, ImportModule>,
 }
 impl Executor {
@@ -36,9 +37,46 @@ impl Executor {
                     inner: InnerExecutor(ctx),
                     inner_store: InnerStore(store_ctx),
                     imports: HashMap::new(),
+                    wasi: None,
                 }),
             }
         }
+    }
+
+    pub fn create_wasi<S: AsRef<str>>(
+        &mut self,
+        args: &[S],
+        envs: &[S],
+        preopens: &[S],
+    ) -> Result<(), WasmEdgeError> {
+        let import_obj = ImportModule::create_wasi(args, envs, preopens)?;
+        self.register_wasi_object(import_obj)
+    }
+
+    pub fn wasi_get_native_handle(&self, wasi_fd: i32) -> Option<u64> {
+        let wasi = self.wasi.as_ref()?;
+        unsafe {
+            let mut raw_fd = 0u64;
+            if ffi::WasmEdge_ModuleInstanceWASIGetNativeHandler(wasi.inner.0, wasi_fd, &mut raw_fd)
+                > 0
+            {
+                Some(raw_fd)
+            } else {
+                None
+            }
+        }
+    }
+
+    pub fn register_wasi_object(&mut self, wasi: ImportModule) -> WasmEdgeResult<()> {
+        unsafe {
+            check(ffi::WasmEdge_ExecutorRegisterImport(
+                self.inner.0,
+                self.inner_store.0,
+                wasi.inner.0,
+            ))?;
+        }
+        self.wasi = Some(wasi);
+        Ok(())
     }
 
     pub fn register_import_object(&mut self, import: ImportModule) -> WasmEdgeResult<()> {

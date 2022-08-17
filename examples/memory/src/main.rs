@@ -5,7 +5,7 @@ use wasmedge_asyncify::{types::WasmVal, *};
 fn async_host_to_uppercase(linker: &mut AsyncLinker, args: Vec<types::WasmVal>) -> ResultFuture {
     Box::new(async move {
         if let (Some(WasmVal::I32(offset)), Some(WasmVal::I32(len))) = (args.get(0), args.get(1)) {
-            let bytes = linker.get_mut_memory("memory", *offset as usize, *len as usize)?;
+            let bytes = linker.get_memory_mut("memory", *offset as usize, *len as usize)?;
             if let Ok(s) = std::str::from_utf8_mut(bytes) {
                 let new_s = s.to_uppercase();
                 bytes.clone_from_slice(new_s.as_bytes());

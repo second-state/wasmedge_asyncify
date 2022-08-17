@@ -2,16 +2,6 @@ use std::path::Path;
 
 use wasmedge_asyncify::*;
 
-fn async_host_sleep(_linker: &mut AsyncLinker, _args: Vec<types::WasmVal>) -> ResultFuture {
-    Box::new(async {
-        println!("host: sleep 1s ...");
-        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-        println!("host: sleep awake");
-
-        Ok(vec![])
-    })
-}
-
 #[tokio::main]
 async fn main() {
     let config = Config::create().unwrap();
@@ -21,17 +11,10 @@ async fn main() {
     // create a wasi module
     builder.create_wasi(&[], &["b=1", "a=1"], &[]).unwrap();
 
-    // create a async import module
-    builder
-        .create_import_object("host", |b| {
-            b.add_async_func("sleep", (vec![], vec![]), async_host_sleep)?;
-            Ok(())
-        })
-        .unwrap();
-
     // read wasm
     let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap();
-    let wasm_path = Path::new(&manifest_dir).join("../../wasm/hello.wasm");
+    // poll_tcp_listener.wasm from https://github.com/second-state/wasmedge_wasi_socket/blob/main/examples/poll_tcp_listener.rs
+    let wasm_path = Path::new(&manifest_dir).join("../../wasm/poll_tcp_listener.wasm");
     println!("load wasm from {:?}", wasm_path);
     let wasm = std::fs::read(wasm_path).unwrap();
 

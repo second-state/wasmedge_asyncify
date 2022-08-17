@@ -153,6 +153,7 @@ impl AotConfig {
 pub(crate) struct InnerCompiler(pub(crate) *mut ffi::WasmEdge_CompilerContext);
 impl Drop for InnerCompiler {
     fn drop(&mut self) {
+        println!("drop InnerCompiler");
         if !self.0.is_null() {
             unsafe { ffi::WasmEdge_CompilerDelete(self.0) }
         }

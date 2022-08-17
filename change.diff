@@ -1,0 +1,47 @@
+diff --git a/include/api/wasmedge/wasmedge.h b/include/api/wasmedge/wasmedge.h
+index d00c3a56..6643801d 100644
+--- a/include/api/wasmedge/wasmedge.h
++++ b/include/api/wasmedge/wasmedge.h
+@@ -1665,6 +1665,10 @@ WASMEDGE_CAPI_EXPORT extern void WasmEdge_ModuleInstanceInitWASI(
+ WASMEDGE_CAPI_EXPORT extern uint32_t WasmEdge_ModuleInstanceWASIGetExitCode(
+     const WasmEdge_ModuleInstanceContext *Cxt);
+ 
++WASMEDGE_CAPI_EXPORT int32_t WasmEdge_ModuleInstanceWASIGetNativeHandler(
++    const WasmEdge_ModuleInstanceContext *Cxt, int32_t Fd,
++    uint64_t *NativeHandler);
++
+ /// Creation of the WasmEdge_ModuleInstanceContext for the wasi_nn
+ /// specification.
+ ///
+diff --git a/lib/api/wasmedge.cpp b/lib/api/wasmedge.cpp
+index 998afb97..d6ec6f9d 100644
+--- a/lib/api/wasmedge.cpp
++++ b/lib/api/wasmedge.cpp
+@@ -1658,6 +1658,27 @@ WASMEDGE_CAPI_EXPORT uint32_t WasmEdge_ModuleInstanceWASIGetExitCode(
+   return WasiMod->getEnv().getExitCode();
+ }
+ 
++WASMEDGE_CAPI_EXPORT int32_t WasmEdge_ModuleInstanceWASIGetNativeHandler(
++    const WasmEdge_ModuleInstanceContext *Cxt,__wasi_fd_t Fd,uint64_t *NativeHandler) {
++  if (!Cxt) {
++    return -1;
++  }
++  auto *WasiMod =
++      dynamic_cast<const WasmEdge::Host::WasiModule *>(fromModCxt(Cxt));
++
++  if (!WasiMod) {
++    return -1;
++  }
++  auto h = WasiMod->getEnv().getNativeHandler(Fd);
++  if(h){
++    *NativeHandler = *h;
++    return 1;
++  }else{
++    return -1;
++  }
++  
++}
++
+ WASMEDGE_CAPI_EXPORT WasmEdge_ModuleInstanceContext *
+ WasmEdge_ModuleInstanceCreateWasiNN(void) {
+   using namespace std::literals::string_view_literals;

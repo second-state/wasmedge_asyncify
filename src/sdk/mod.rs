@@ -6,6 +6,7 @@ mod aot;
 mod instance;
 mod linker;
 mod module;
+mod wasi;
 
 pub use crate::core::instance::memory::Memory;
 pub use instance::function::ResultFuture;
