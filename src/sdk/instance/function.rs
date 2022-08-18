@@ -117,7 +117,7 @@ pub(crate) extern "C" fn wrapper_async_fn(
                         fut_is_ready = true;
                         match result {
                             Ok(v) => {
-                                assert!(v.len() == return_len);
+                                debug_assert!(v.len() == return_len);
                                 for (idx, item) in v.into_iter().enumerate() {
                                     raw_returns[idx] = item.into();
                                 }
@@ -185,7 +185,7 @@ pub extern "C" fn wrapper_fn(
 
         match result {
             Ok(v) => {
-                assert!(v.len() == return_len);
+                debug_assert!(v.len() == return_len);
                 for (idx, item) in v.into_iter().enumerate() {
                     raw_returns[idx] = item.into();
                 }

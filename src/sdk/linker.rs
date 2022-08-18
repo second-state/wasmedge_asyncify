@@ -84,16 +84,15 @@ impl AsyncLinker {
         &'a self,
         name: &str,
         offset: usize,
-        size: usize,
+        len: usize,
     ) -> WasmEdgeResult<&'a [T]> {
         let inst = self.inst.as_ref().ok_or(unreachable())?;
         let memory = inst.get_memory(name)?;
 
         unsafe {
-            let len = std::mem::size_of::<T>() * size;
-            let ptr = memory.data_pointer_raw(offset, len)? as *const T;
-
-            Ok(std::slice::from_raw_parts(ptr, size))
+            let size = std::mem::size_of::<T>() * len;
+            let ptr = memory.data_pointer_raw(offset, size)? as *const T;
+            Ok(std::slice::from_raw_parts(ptr, len))
         }
     }
 
@@ -101,15 +100,15 @@ impl AsyncLinker {
         &'a mut self,
         name: &str,
         offset: usize,
-        size: usize,
+        len: usize,
     ) -> WasmEdgeResult<&'a mut [T]> {
         let inst = self.inst.as_ref().ok_or(unreachable())?;
         let mut memory = inst.get_memory(name)?;
 
         unsafe {
-            let len = std::mem::size_of::<T>() * size;
-            let ptr = memory.data_pointer_mut_raw(offset, len)? as *mut _;
-            Ok(std::slice::from_raw_parts_mut(ptr, size))
+            let size = std::mem::size_of::<T>() * len;
+            let ptr = memory.data_pointer_mut_raw(offset, size)? as *mut _;
+            Ok(std::slice::from_raw_parts_mut(ptr, len))
         }
     }
 
@@ -204,6 +203,8 @@ impl AsyncLinkerBuilder {
         )?;
 
         self.linker.executor.register_wasi_object(wasi)?;
+        self.async_fn_name
+            .push("wasi_snapshot_preview1.poll_oneoff".into());
 
         Ok(())
     }

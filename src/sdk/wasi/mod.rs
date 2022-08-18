@@ -192,7 +192,6 @@ async fn wait_fd(
         }
         raw_types::__wasi_eventtype_t::__WASI_EVENTTYPE_FD_READ => match real_fd {
             Ok(real_fd) => {
-
                 let r = tokio::io::unix::AsyncFd::with_interest(
                     real_fd as i32,
                     tokio::io::Interest::READABLE,
@@ -213,7 +212,6 @@ async fn wait_fd(
         },
         raw_types::__wasi_eventtype_t::__WASI_EVENTTYPE_FD_WRITE => match real_fd {
             Ok(real_fd) => {
-
                 let r = tokio::io::unix::AsyncFd::with_interest(
                     real_fd as i32,
                     tokio::io::Interest::WRITABLE,
