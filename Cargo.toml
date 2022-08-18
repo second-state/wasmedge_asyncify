@@ -21,8 +21,9 @@ members = [
     "examples/memory",
     "examples/aot",
     "examples/async_wasi",
+    "wasm/*",
 ]
-exclude = ["wasm"]
+# exclude = ["wasm"]
 
 
 [features]
