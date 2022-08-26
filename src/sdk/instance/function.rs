@@ -58,28 +58,28 @@ impl Future for WasmEdgeResultFuture<'_> {
     }
 }
 
-type FnWrapper = extern "C" fn(
+type FnWrapper = unsafe extern "C" fn(
     key_ptr: *mut c_void,
     data_ptr: *mut c_void,
-    _mem_ctx: *mut ffi::WasmEdge_MemoryInstanceContext,
+    _calling_frame_ctx: *const ffi::WasmEdge_CallingFrameContext,
     params: *const ffi::WasmEdge_Value,
     param_len: u32,
     returns: *mut ffi::WasmEdge_Value,
     return_len: u32,
 ) -> ffi::WasmEdge_Result;
 
-pub(crate) extern "C" fn wrapper_async_fn(
+pub(crate) unsafe extern "C" fn wrapper_async_fn(
     key_ptr: *mut c_void,
     data_ptr: *mut c_void,
-    _mem_ctx: *mut ffi::WasmEdge_MemoryInstanceContext,
+    _calling_frame_ctx: *const ffi::WasmEdge_CallingFrameContext,
     params: *const ffi::WasmEdge_Value,
     param_len: u32,
     returns: *mut ffi::WasmEdge_Value,
     return_len: u32,
 ) -> ffi::WasmEdge_Result {
-    if let Some(data) = unsafe { (data_ptr as *mut AsyncLinker).as_mut() } {
+    if let Some(data) = (data_ptr as *mut AsyncLinker).as_mut() {
         let mut cous = || -> WasmEdgeResult<ffi::WasmEdge_Result> {
-            let linker = unsafe { (data_ptr as *mut AsyncLinker).as_mut().unwrap() };
+            let linker = (data_ptr as *mut AsyncLinker).as_mut().unwrap();
 
             let cx = data.cx.clone();
             let mut cx = Context::from_waker(&cx);
@@ -87,11 +87,10 @@ pub(crate) extern "C" fn wrapper_async_fn(
             let r = {
                 let fut = if data.asyncify_done()? {
                     let real_fn: fn(&mut AsyncLinker, Vec<WasmVal>) -> ResultFuture =
-                        unsafe { std::mem::transmute(key_ptr) };
+                        std::mem::transmute(key_ptr);
 
                     let input = {
-                        let raw_input =
-                            unsafe { std::slice::from_raw_parts(params, param_len as usize) };
+                        let raw_input = std::slice::from_raw_parts(params, param_len as usize);
                         raw_input
                             .iter()
                             .map(|r| (*r).into())
@@ -110,7 +109,7 @@ pub(crate) extern "C" fn wrapper_async_fn(
                 let mut fut = fut.unwrap();
 
                 let return_len = return_len as usize;
-                let raw_returns = unsafe { std::slice::from_raw_parts_mut(returns, return_len) };
+                let raw_returns = std::slice::from_raw_parts_mut(returns, return_len);
 
                 match Future::poll(fut.as_mut(), &mut cx) {
                     std::task::Poll::Ready(result) => {
@@ -160,7 +159,7 @@ pub(crate) extern "C" fn wrapper_async_fn(
 pub extern "C" fn wrapper_fn(
     key_ptr: *mut c_void,
     data: *mut c_void,
-    _mem_ctx: *mut ffi::WasmEdge_MemoryInstanceContext,
+    _calling_frame_ctx: *const ffi::WasmEdge_CallingFrameContext,
     params: *const ffi::WasmEdge_Value,
     param_len: u32,
     returns: *mut ffi::WasmEdge_Value,

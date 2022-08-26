@@ -451,17 +451,14 @@ pub struct __wasi_addrinfo_t {
     pub ai_canonname_len: __wasi_size_t,
     pub ai_next: uint8_t_ptr,
 }
-#[repr(u16)]
-#[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
-pub enum __wasi_riflags_t {
-    __WASI_RIFLAGS_RECV_PEEK = 1,
-    __WASI_RIFLAGS_RECV_WAITALL = 2,
-}
-#[repr(u16)]
-#[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
-pub enum __wasi_roflags_t {
-    __WASI_ROFLAGS_RECV_DATA_TRUNCATED = 1,
-}
+
+pub type __wasi_riflags_t = u16;
+pub static __WASI_RIFLAGS_RECV_PEEK: __wasi_riflags_t = 1;
+pub static __WASI_RIFLAGS_RECV_WAITALL: __wasi_riflags_t = 2;
+
+pub type __wasi_roflags_t = u16;
+pub static __WASI_ROFLAGS_RECV_DATA_TRUNCATED: __wasi_roflags_t = 1;
+
 pub type __wasi_siflags_t = u16;
 #[repr(u8)]
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]

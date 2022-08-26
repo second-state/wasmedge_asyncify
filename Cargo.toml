@@ -16,15 +16,8 @@ futures = { version = "0.3" }
 libc = { version = "0.2" }
 
 [workspace]
-members = [
-    "examples/hello",
-    "examples/memory",
-    "examples/aot",
-    "examples/async_wasi",
-    "wasm/*",
-]
-# exclude = ["wasm"]
-
+members = ["examples/*", "wasm/*"]
+exclude = ["WasmEdge"]
 
 [features]
 default = ["aot"]
