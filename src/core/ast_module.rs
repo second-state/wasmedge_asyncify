@@ -1,11 +1,10 @@
 use std::borrow::Cow;
 
-use wasmedge_types::error::WasmEdgeError;
-
 use super::config::Config;
+use crate::error::{CoreCommonError, CoreError, CoreLoadError};
 use crate::utils::check;
 
-use wasmedge_sys::ffi;
+use wasmedge_sys_ffi as ffi;
 
 pub type CodegenConfig = binaryen::CodegenConfig;
 
@@ -26,10 +25,9 @@ impl Drop for Loader {
     }
 }
 unsafe impl Send for Loader {}
-unsafe impl Sync for Loader {}
 
 impl Loader {
-    pub fn create(config: &Option<Config>) -> Result<Self, WasmEdgeError> {
+    pub fn create(config: &Option<Config>) -> Option<Self> {
         unsafe {
             let config_ctx = if let Some(c) = config {
                 c.inner.0
@@ -39,21 +37,34 @@ impl Loader {
 
             let loader_inner = ffi::WasmEdge_LoaderCreate(config_ctx);
             if loader_inner.is_null() {
-                return Err(WasmEdgeError::LoaderCreate);
+                return None;
             }
 
             let validator_inner = ffi::WasmEdge_ValidatorCreate(config_ctx);
             if validator_inner.is_null() {
-                return Err(WasmEdgeError::ValidatorCreate);
+                ffi::WasmEdge_LoaderDelete(loader_inner);
+                return None;
             }
-            Ok(Self {
+            Some(Self {
                 loader_inner,
                 validator_inner,
             })
         }
     }
 
-    pub fn load_module_from_bytes(&mut self, wasm: &[u8]) -> Result<AstModule, WasmEdgeError> {
+    pub fn load_async_module_from_bytes(&self, wasm: &[u8]) -> Result<AstModule, CoreError> {
+        let mut codegen_config = CodegenConfig::default();
+        codegen_config.optimization_level = 2;
+        codegen_config
+            .pass_argument
+            .push(("asyncify-imports".to_string(), "*.async_".to_string()));
+
+        let new_wasm = pass_async_module(wasm, ["asyncify", "strip"], &codegen_config)
+            .ok_or(CoreError::Load(CoreLoadError::ReadError))?;
+        self.load_module_from_bytes(&new_wasm)
+    }
+
+    pub fn load_module_from_bytes(&self, wasm: &[u8]) -> Result<AstModule, CoreError> {
         unsafe {
             let mut mod_ctx: *mut ffi::WasmEdge_ASTModuleContext = std::ptr::null_mut();
 
@@ -64,8 +75,9 @@ impl Loader {
                 wasm.len() as u32,
             ))?;
 
+            debug_assert!(!mod_ctx.is_null());
             if mod_ctx.is_null() {
-                return Err(WasmEdgeError::ModuleCreate);
+                return Err(CoreError::Common(CoreCommonError::RuntimeError));
             }
 
             let validate_result = check(ffi::WasmEdge_ValidatorValidate(
@@ -79,42 +91,6 @@ impl Loader {
             }
 
             Ok(AstModule { inner: mod_ctx })
-        }
-    }
-
-    pub fn pass_async_module_from_bytes<'a, B: AsRef<str>, I: IntoIterator<Item = B>>(
-        &mut self,
-        wasm: &'a [u8],
-        passes: I,
-        codegen_config: &CodegenConfig,
-    ) -> Result<Cow<'a, [u8]>, WasmEdgeError> {
-        let mut module = binaryen::Module::read(wasm).map_err(|_| WasmEdgeError::ModuleCreate)?;
-
-        if module.get_export("asyncify_get_state").unwrap().is_null() {
-            // skip run start on init
-            {
-                if let Some(start) = module.get_start() {
-                    let global_ref = module.add_global("start_initialized", true, 0_i32).unwrap();
-                    let new_body = module.binaryen_if(
-                        module.binaryen_get_global(global_ref),
-                        start.body(),
-                        module.binaryen_set_global(global_ref, module.binaryen_const_value(1_i32)),
-                    );
-                    start.set_body(new_body);
-                    module
-                        .add_function_export(&start, "__original_start")
-                        .unwrap();
-                }
-            }
-
-            module
-                .run_optimization_passes(passes, &codegen_config)
-                .map_err(|_| WasmEdgeError::ModuleCreate)?;
-
-            let new_wasm = module.write();
-            Ok(Cow::Owned(new_wasm))
-        } else {
-            Ok(Cow::Borrowed(wasm))
         }
     }
 }
@@ -132,3 +108,22 @@ impl Drop for AstModule {
 }
 unsafe impl Send for AstModule {}
 unsafe impl Sync for AstModule {}
+
+pub(crate) fn pass_async_module<'a, B: AsRef<str>, I: IntoIterator<Item = B>>(
+    wasm: &'a [u8],
+    passes: I,
+    codegen_config: &CodegenConfig,
+) -> Option<Cow<'a, [u8]>> {
+    let mut module = binaryen::Module::read(wasm).ok()?;
+
+    if module.get_export("asyncify_get_state").unwrap().is_null() {
+        module
+            .run_optimization_passes(passes, &codegen_config)
+            .ok()?;
+
+        let new_wasm = module.write();
+        Some(Cow::Owned(new_wasm))
+    } else {
+        Some(Cow::Borrowed(wasm))
+    }
+}

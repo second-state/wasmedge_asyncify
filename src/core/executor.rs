@@ -1,133 +1,75 @@
 //! Defines WasmEdge Executor.
-use std::collections::HashMap;
-
-use wasmedge_types::error::WasmEdgeError;
-use wasmedge_types::WasmEdgeResult;
 
 use super::ast_module::AstModule;
 use super::instance::function::FuncRef;
-use super::module::{ImportModule, InnerInstance, Instance};
+use super::module::InnerInstance;
 use super::{config::Config, types::WasmVal};
 
+use crate::error::{CoreError, CoreExecutionError};
 use crate::utils::check;
 
-use wasmedge_sys::ffi;
+use wasmedge_sys_ffi as ffi;
 
 /// Defines an execution environment for both pure WASM and compiled WASM.
 #[derive(Debug)]
 pub struct Executor {
     pub(crate) inner: InnerExecutor,
-    pub(crate) inner_store: InnerStore,
-    pub(crate) wasi: Option<ImportModule>,
-    imports: HashMap<String, ImportModule>,
 }
 impl Executor {
-    pub fn create(config: &Option<Config>) -> WasmEdgeResult<Self> {
+    pub fn create(config: &Option<Config>) -> Option<Self> {
         unsafe {
             let conf_ctx = match config {
                 Some(cfg) => cfg.inner.0,
                 None => std::ptr::null_mut(),
             };
             let ctx = ffi::WasmEdge_ExecutorCreate(conf_ctx, std::ptr::null_mut());
-            let store_ctx = ffi::WasmEdge_StoreCreate();
-
-            match ctx.is_null() {
-                true => Err(WasmEdgeError::ExecutorCreate),
-                false => Ok(Executor {
-                    inner: InnerExecutor(ctx),
-                    inner_store: InnerStore(store_ctx),
-                    imports: HashMap::new(),
-                    wasi: None,
-                }),
-            }
-        }
-    }
-
-    pub fn create_wasi<S: AsRef<str>>(
-        &mut self,
-        args: &[S],
-        envs: &[S],
-        preopens: &[S],
-    ) -> Result<(), WasmEdgeError> {
-        let import_obj = ImportModule::create_wasi(args, envs, preopens)?;
-        self.register_wasi_object(import_obj)
-    }
-
-    pub fn wasi_get_native_handle(&self, wasi_fd: i32) -> Option<u64> {
-        let wasi = self.wasi.as_ref()?;
-        unsafe {
-            let mut raw_fd = 0u64;
-            if ffi::WasmEdge_ModuleInstanceWASIGetNativeHandler(wasi.inner.0, wasi_fd, &mut raw_fd)
-                > 0
-            {
-                Some(raw_fd)
-            } else {
+            if ctx.is_null() {
                 None
+            } else {
+                Some(Executor {
+                    inner: InnerExecutor(ctx),
+                })
             }
         }
     }
 
-    pub fn register_wasi_object(&mut self, wasi: ImportModule) -> WasmEdgeResult<()> {
-        unsafe {
-            check(ffi::WasmEdge_ExecutorRegisterImport(
-                self.inner.0,
-                self.inner_store.0,
-                wasi.inner.0,
-            ))?;
-        }
-        self.wasi = Some(wasi);
-        Ok(())
-    }
-
-    pub fn register_import_object(&mut self, import: ImportModule) -> WasmEdgeResult<()> {
-        unsafe {
-            check(ffi::WasmEdge_ExecutorRegisterImport(
-                self.inner.0,
-                self.inner_store.0,
-                import.inner.0,
-            ))?;
-            self.imports.insert(import.name(), import);
-        }
-
-        Ok(())
-    }
-
-    // fixme
-    pub fn instantiate(&mut self, module: &AstModule) -> WasmEdgeResult<Instance> {
+    pub(crate) fn instantiate(
+        &self,
+        store: &InnerStore,
+        module: &AstModule,
+    ) -> Result<InnerInstance, CoreError> {
         let mut instance_ctx = std::ptr::null_mut();
         unsafe {
             check(ffi::WasmEdge_ExecutorInstantiate(
                 self.inner.0,
                 &mut instance_ctx,
-                self.inner_store.0,
+                store.0,
                 module.inner,
             ))?;
         }
 
+        debug_assert!(!instance_ctx.is_null());
         if instance_ctx.is_null() {
-            return Err(WasmEdgeError::Instance(
-                wasmedge_types::error::InstanceError::Create,
-            ));
+            return Err(CoreError::runtime());
         }
 
-        Ok(Instance {
-            inner: InnerInstance(instance_ctx),
-        })
+        Ok(InnerInstance(instance_ctx))
     }
 
     pub fn run_func_ref(
-        &mut self,
+        &self,
         func: &FuncRef,
         params: &[WasmVal],
-    ) -> WasmEdgeResult<Vec<WasmVal>> {
+    ) -> Result<Vec<WasmVal>, CoreError> {
         let raw_params = params.into_iter().map(|x| x.into()).collect::<Vec<_>>();
 
         // get the length of the function's returns
-        let returns_len = func.func_return_size()?;
+        let returns_len = func
+            .func_return_size()
+            .ok_or(CoreError::Execution(CoreExecutionError::FuncTypeMismatch))?;
 
         unsafe {
             let mut returns = Vec::with_capacity(returns_len);
-
             check(ffi::WasmEdge_ExecutorInvoke(
                 self.inner.0,
                 func.inner.0,
@@ -152,7 +94,7 @@ impl Drop for InnerExecutor {
     }
 }
 unsafe impl Send for InnerExecutor {}
-unsafe impl Sync for InnerExecutor {}
+// unsafe impl Sync for InnerExecutor {}
 
 #[derive(Debug)]
 pub(crate) struct InnerStore(pub(crate) *mut ffi::WasmEdge_StoreContext);

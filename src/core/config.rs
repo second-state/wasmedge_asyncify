@@ -1,8 +1,6 @@
 //! Defines WasmEdge Config struct.
 
-use wasmedge_sys::ffi;
-use wasmedge_types::error::WasmEdgeError;
-use wasmedge_types::WasmEdgeResult;
+use wasmedge_sys_ffi as ffi;
 
 #[derive(Debug)]
 pub struct Config {
@@ -17,10 +15,10 @@ impl Drop for Config {
 }
 
 impl Config {
-    pub fn create() -> WasmEdgeResult<Self> {
+    pub fn create() -> Option<Self> {
         let ctx = unsafe { ffi::WasmEdge_ConfigureCreate() };
         match ctx.is_null() {
-            true => Err(WasmEdgeError::ConfigCreate),
+            true => None,
             false => {
                 let mut config = Config {
                     inner: InnerConfig(ctx),
@@ -30,12 +28,12 @@ impl Config {
                 config.multi_memories(true);
                 config.wasi(true);
 
-                Ok(config)
+                Some(config)
             }
         }
     }
 
-    pub fn copy_from(src: &Config) -> WasmEdgeResult<Self> {
+    pub fn copy_from(src: &Config) -> Option<Self> {
         let mut config = Config::create()?;
 
         config.annotations(src.annotations_enabled());
@@ -76,7 +74,7 @@ impl Config {
 
         config.set_max_memory_pages(src.get_max_memory_pages());
 
-        Ok(config)
+        Some(config)
     }
 
     pub fn wasi(&mut self, enable: bool) {
