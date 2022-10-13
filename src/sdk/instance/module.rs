@@ -211,8 +211,12 @@ impl Future for CallFuture<'_> {
     }
 }
 
-pub type AsyncFn<T> =
-    for<'a> fn(&'a mut AsyncInstanceRef, &'a Memory, &'a mut T, Vec<WasmVal>) -> ResultFuture<'a>;
+pub type AsyncFn<T> = for<'a> fn(
+    &'a mut AsyncInstanceRef,
+    &'a mut Memory,
+    &'a mut T,
+    Vec<WasmVal>,
+) -> ResultFuture<'a>;
 pub type ResultFuture<'a> = Box<dyn Future<Output = Result<Vec<WasmVal>, CoreError>> + 'a>;
 
 #[derive(Error, Debug, Clone, PartialEq, Eq)]

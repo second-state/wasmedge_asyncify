@@ -32,7 +32,7 @@ async fn run_test() {
 
     fn f1<'a>(
         _inst: &'a mut module::AsyncInstanceRef,
-        _mem: &'a Memory,
+        _mem: &'a mut Memory,
         data: &'a mut i32,
         _args: Vec<types::WasmVal>,
     ) -> module::ResultFuture<'a> {
@@ -51,7 +51,7 @@ async fn run_test() {
 
     fn f2<'a>(
         _inst: &'a mut module::AsyncInstanceRef,
-        _mem: &'a Memory,
+        _mem: &'a mut Memory,
         _data: &'a mut (),
         _args: Vec<types::WasmVal>,
     ) -> module::ResultFuture<'a> {
