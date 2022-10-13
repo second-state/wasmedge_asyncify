@@ -130,9 +130,9 @@ pub fn random_get<M: Memory>(
     _ctx: &mut WasiCtx,
     mem: &mut M,
     buf: WasmPtr<u8>,
-    buf_len: usize,
+    buf_len: __wasi_size_t,
 ) -> Result<(), Errno> {
-    let u8_buffer = mem.mut_slice(buf, buf_len)?;
+    let u8_buffer = mem.mut_slice(buf, buf_len as usize)?;
     getrandom::getrandom(u8_buffer).map_err(|_| Errno(__wasi_errno_t::__WASI_ERRNO_IO))
 }
 
