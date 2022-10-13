@@ -211,13 +211,20 @@ impl Future for CallFuture<'_> {
     }
 }
 
-pub type AsyncFn<T> = for<'a> fn(
+pub type AsyncWasmFn<T> = for<'a> fn(
     &'a mut AsyncInstanceRef,
     &'a mut Memory,
     &'a mut T,
     Vec<WasmVal>,
 ) -> ResultFuture<'a>;
 pub type ResultFuture<'a> = Box<dyn Future<Output = Result<Vec<WasmVal>, CoreError>> + 'a>;
+
+pub type SyncWasmFn<T> = for<'a> fn(
+    &'a mut AsyncInstanceRef,
+    &'a mut Memory,
+    &'a mut T,
+    Vec<WasmVal>,
+) -> Result<Vec<WasmVal>, CoreError>;
 
 #[derive(Error, Debug, Clone, PartialEq, Eq)]
 pub enum AddFuncError {
@@ -331,18 +338,100 @@ pub(crate) unsafe extern "C" fn wrapper_async_fn<T: Sized + Send>(
     }
 }
 
+pub(crate) unsafe extern "C" fn wrapper_sync_fn<T: Sized + Send>(
+    key_ptr: *mut c_void,
+    data_ptr: *mut c_void,
+    calling_frame_ctx: *const ffi::WasmEdge_CallingFrameContext,
+    params: *const ffi::WasmEdge_Value,
+    param_len: u32,
+    returns: *mut ffi::WasmEdge_Value,
+    return_len: u32,
+) -> ffi::WasmEdge_Result {
+    let cous = || -> Result<(), CoreError> {
+        let inst_ctx = ffi::WasmEdge_CallingFrameGetModuleInstance(calling_frame_ctx);
+        let executor_ctx = ffi::WasmEdge_CallingFrameGetExecutor(calling_frame_ctx);
+        let main_mem_ctx = ffi::WasmEdge_CallingFrameGetMemoryInstance(calling_frame_ctx, 0);
+
+        let mut inst = std::mem::ManuallyDrop::new(AsyncInstanceRef {
+            executor: Executor {
+                inner: InnerExecutor(executor_ctx),
+            },
+            inner: InnerInstance(inst_ctx as *mut _),
+        });
+
+        let mut mem = Memory::from_raw(main_mem_ctx);
+
+        let data_ptr = data_ptr.cast::<T>().as_mut();
+        debug_assert!(data_ptr.is_some());
+        let data_ptr = data_ptr.unwrap();
+
+        let real_fn: fn(
+            &mut AsyncInstanceRef,
+            &mut Memory,
+            &mut T,
+            Vec<WasmVal>,
+        ) -> Result<Vec<WasmVal>, CoreError> = std::mem::transmute(key_ptr);
+
+        let input = {
+            let raw_input = std::slice::from_raw_parts(params, param_len as usize);
+            raw_input
+                .iter()
+                .map(|r| (*r).into())
+                .collect::<Vec<WasmVal>>()
+        };
+        let v = real_fn(&mut inst, &mut mem, data_ptr, input)?;
+
+        let return_len = return_len as usize;
+        let raw_returns = std::slice::from_raw_parts_mut(returns, return_len);
+
+        for (idx, item) in v.into_iter().enumerate() {
+            raw_returns[idx] = item.into();
+        }
+        Ok(())
+    };
+    match cous() {
+        Ok(_) => ffi::WasmEdge_Result { Code: 0x0 },
+        Err(e) => e.into(),
+    }
+}
+
 impl<T: Send + Sized> ImportModule<T> {
     pub fn add_async_func(
         &mut self,
         name: &str,
         ty: (Vec<ValType>, Vec<ValType>),
-        real_fn: AsyncFn<T>,
+        real_fn: AsyncWasmFn<T>,
     ) -> Result<(), AddFuncError> {
         let func_name = WasmEdgeString::new(name)?;
         unsafe {
             let func = Function::custom_create(
                 ty,
                 wrapper_async_fn::<T>,
+                real_fn as *mut _,
+                &mut self.data,
+            )
+            .ok_or(AddFuncError::FunctionCreate)?;
+
+            ffi::WasmEdge_ModuleInstanceAddFunction(
+                self.inner.0,
+                func_name.as_raw(),
+                func.inner.0 as *mut _,
+            );
+            Ok(())
+        }
+    }
+
+    pub fn add_sync_func(
+        &mut self,
+        name: &str,
+        ty: (Vec<ValType>, Vec<ValType>),
+        real_fn: SyncWasmFn<T>,
+    ) -> Result<(), AddFuncError> {
+        let func_name = WasmEdgeString::new(name)?;
+        unsafe {
+            let func = Function::custom_create(
+                ty,
+                wrapper_sync_fn::<T>,
                 real_fn as *mut _,
                 &mut self.data,
             )
