@@ -22,11 +22,17 @@ impl CoreError {
     pub(crate) fn runtime() -> Self {
         CoreError::Common(CoreCommonError::RuntimeError)
     }
+
+    pub fn terminated() -> Self {
+        CoreError::Common(CoreCommonError::Terminated)
+    }
 }
 
 /// The error type for the common errors from WasmEdge Core.
 #[derive(Error, Clone, Debug, PartialEq, Eq)]
 pub enum CoreCommonError {
+    #[error("process terminated")]
+    Terminated,
     #[error("generic runtime error")]
     RuntimeError,
     #[error("cost limit exceeded")]

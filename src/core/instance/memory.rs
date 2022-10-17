@@ -39,7 +39,7 @@ impl Memory {
         }
     }
 
-    pub fn get_data(&self, offset: u32, len: u32) -> Result<Vec<u8>, CoreError> {
+    pub fn read_bytes(&self, offset: u32, len: u32) -> Result<Vec<u8>, CoreError> {
         let mut data = Vec::with_capacity(len as usize);
         unsafe {
             check(ffi::WasmEdge_MemoryInstanceGetData(
@@ -54,7 +54,7 @@ impl Memory {
         Ok(data.into_iter().collect())
     }
 
-    pub fn set_data<D: AsRef<[u8]>>(&mut self, data: D, offset: u32) -> Result<(), CoreError> {
+    pub fn write_bytes<D: AsRef<[u8]>>(&mut self, data: D, offset: u32) -> Result<(), CoreError> {
         let data = data.as_ref();
         unsafe {
             check(ffi::WasmEdge_MemoryInstanceSetData(

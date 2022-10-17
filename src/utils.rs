@@ -30,9 +30,10 @@ pub(crate) fn check(result: WasmEdge_Result) -> Result<(), CoreError> {
 fn gen_runtime_error(code: u32) -> Result<(), CoreError> {
     match code {
         // Success or terminated (exit and return success)
-        0x00 | 0x01 => Ok(()),
+        0x00 => Ok(()),
 
         // Common errors
+        0x01 => Err(CoreError::Common(CoreCommonError::Terminated)),
         0x02 => Err(CoreError::Common(CoreCommonError::RuntimeError)),
         0x03 => Err(CoreError::Common(CoreCommonError::CostLimitExceeded)),
         0x04 => Err(CoreError::Common(CoreCommonError::WrongVMWorkflow)),
@@ -154,6 +155,7 @@ impl Into<WasmEdge_Result> for CoreError {
     fn into(self) -> WasmEdge_Result {
         let code = match self {
             // Common errors
+            CoreError::Common(CoreCommonError::Terminated) => 0x01,
             CoreError::Common(CoreCommonError::RuntimeError) => 0x02,
             CoreError::Common(CoreCommonError::CostLimitExceeded) => 0x03,
             CoreError::Common(CoreCommonError::WrongVMWorkflow) => 0x04,

@@ -15,6 +15,17 @@ pub struct WasiCtx {
 }
 
 impl WasiCtx {
+    pub fn new() -> Self {
+        WasiCtx {
+            args: vec![],
+            envs: vec![],
+            vfs: vec![],
+            vfs_preopen_limit: 3,
+            vfs_last_fd: 3,
+            exit_code: 0,
+        }
+    }
+
     pub fn get_mut_vfd(&mut self, fd: __wasi_fd_t) -> Result<&mut env::VFD, Errno> {
         if fd < 0 {
             Err(Errno::__WASI_ERRNO_BADF)

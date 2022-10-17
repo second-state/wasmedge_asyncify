@@ -2,7 +2,7 @@
 mod aot;
 
 mod instance;
-mod wasi;
+pub mod wasi;
 
 pub use instance::module;
 pub use instance::store;
