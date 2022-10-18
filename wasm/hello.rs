@@ -2,7 +2,7 @@
 // rustc --target=wasm32-wasi -O hello.rs
 #[link(wasm_import_module = "host")]
 extern "C" {
-    fn sleep();
+    fn async_sleep();
 }
 
 fn main() {
@@ -12,6 +12,6 @@ fn main() {
         std::env::var("b")
     );
     println!("wasm: hello");
-    unsafe { sleep() };
+    unsafe { async_sleep() };
     println!("wasm: world");
 }
