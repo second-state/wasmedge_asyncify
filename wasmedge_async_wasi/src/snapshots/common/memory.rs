@@ -51,14 +51,14 @@ impl<T: Sized> Into<usize> for WasmPtr<T> {
 impl<T: Sized> Add<usize> for WasmPtr<T> {
     type Output = Self;
     fn add(mut self, rhs: usize) -> Self::Output {
-        self.0 += rhs;
+        self.0 += rhs * std::mem::size_of::<T>();
         self
     }
 }
 impl<T: Sized> Sub<usize> for WasmPtr<T> {
     type Output = Self;
     fn sub(mut self, rhs: usize) -> Self::Output {
-        self.0 -= rhs;
+        self.0 -= rhs * std::mem::size_of::<T>();
         self
     }
 }

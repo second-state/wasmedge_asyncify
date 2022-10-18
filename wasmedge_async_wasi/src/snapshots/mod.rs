@@ -16,14 +16,35 @@ pub struct WasiCtx {
 
 impl WasiCtx {
     pub fn new() -> Self {
-        WasiCtx {
+        let wasi_stdin = VFD::Inode(env::vfs::INode::Stdin(env::vfs::WasiStdin));
+        let wasi_stdout = VFD::Inode(env::vfs::INode::Stdout(env::vfs::WasiStdout));
+        let wasi_stderr = VFD::Inode(env::vfs::INode::Stderr(env::vfs::WasiStderr));
+
+        let ctx = WasiCtx {
             args: vec![],
             envs: vec![],
-            vfs: vec![],
-            vfs_preopen_limit: 3,
-            vfs_last_fd: 3,
+            vfs: vec![Some(wasi_stdin), Some(wasi_stdout), Some(wasi_stderr)],
+            vfs_preopen_limit: 2,
+            vfs_last_fd: 2,
             exit_code: 0,
-        }
+        };
+
+        ctx
+    }
+
+    pub fn push_preopen(&mut self, preopen: env::vfs::WasiPreOpenDir) {
+        self.vfs
+            .push(Some(VFD::Inode(env::vfs::INode::PreOpenDir(preopen))));
+        self.vfs_last_fd += 1;
+        self.vfs_preopen_limit += 1;
+    }
+
+    pub fn push_arg(&mut self, arg: String) {
+        self.args.push(arg);
+    }
+
+    pub fn push_env(&mut self, key: &str, value: &str) {
+        self.envs.push(format!("{}={}", key, value));
     }
 
     pub fn get_mut_vfd(&mut self, fd: __wasi_fd_t) -> Result<&mut env::VFD, Errno> {

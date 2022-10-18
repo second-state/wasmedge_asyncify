@@ -86,7 +86,10 @@ pub fn environ_sizes_get<M: Memory>(
     environ_buf_size: WasmPtr<__wasi_size_t>,
 ) -> Result<(), Errno> {
     let wasi_envs_len = ctx.envs.len();
-    debug_assert!(wasi_envs_len < __wasi_size_t::MAX as usize);
+    debug_assert!(
+        wasi_envs_len < __wasi_size_t::MAX as usize,
+        "wasi_envs_len({wasi_envs_len})"
+    );
     let environ_count = mem.mut_data(environ_count)?;
     *environ_count = (wasi_envs_len as u32).to_le();
 

@@ -665,6 +665,17 @@ impl DerefMut for WasiPreOpenDir {
 }
 
 impl WasiPreOpenDir {
+    pub fn new(dir: fs::File, path: PathBuf) -> Self {
+        WasiPreOpenDir {
+            wasidir: WasiDir {
+                dir,
+                path,
+                dir_rights: WASIRights::dir_all(),
+                file_rights: WASIRights::fd_all(),
+            },
+        }
+    }
+
     pub fn get_absolutize_path<P: AsRef<Path>>(&self, sub_path: &P) -> Result<PathBuf, Errno> {
         use path_absolutize::*;
         let mut new_path = self.path.clone();
