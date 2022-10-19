@@ -81,11 +81,11 @@ fn connects_to_subscriptions(connects: &Connects) -> Vec<poll::Subscription> {
 fn main() -> std::io::Result<()> {
     let mut connects = Connects::new();
     let server = TcpListener::bind("127.0.0.1:1234", true)?;
-    println!("listen 1234");
+    println!("[wasm] listen 1234");
     connects.add(NetConn::Server(server));
 
     loop {
-        let mut subs = connects_to_subscriptions(&connects);
+        let subs = connects_to_subscriptions(&connects);
         let events = poll::poll(&subs)?;
 
         for event in events {
@@ -93,19 +93,19 @@ fn main() -> std::io::Result<()> {
             match connects.get_mut(conn_id) {
                 Some(NetConn::Server(server)) => match event.event_type {
                     poll::EventType::Timeout => {
-                        println!("accept(1s) timeout");
+                        println!("[wasm] accept(1s) timeout");
                     }
                     poll::EventType::Error(e) => {
                         return Err(e);
                     }
                     poll::EventType::Read => {
                         let (mut tcp_client, addr) = server.accept(true)?;
-                        println!("accept from {}", addr);
+                        println!("[wasm] accept from {}", addr);
 
                         match tcp_client.write(DATA) {
                             Ok(n) if n < DATA.len() => {
                                 println!(
-                                    "write hello error: {}",
+                                    "[wasm] write hello error: {}",
                                     io::Error::from(io::ErrorKind::WriteZero)
                                 );
                                 continue;
@@ -114,13 +114,13 @@ fn main() -> std::io::Result<()> {
                             Err(ref err) if would_block(err) => {}
                             Err(ref err) if interrupted(err) => {}
                             Err(err) => {
-                                println!("write hello error: {}", err);
+                                println!("[wasm] write hello error: {}", err);
                                 continue;
                             }
                         }
 
                         let id = connects.add(NetConn::Client(tcp_client));
-                        println!("add conn[{}]", id);
+                        println!("[wasm] add conn[{}]", id);
                     }
                     poll::EventType::Write => unreachable!(),
                 },
@@ -131,16 +131,16 @@ fn main() -> std::io::Result<()> {
                             unreachable!()
                         }
                         poll::EventType::Error(e) => {
-                            println!("tcp_client[{}] recv a io error: {}", conn_id, e);
+                            println!("[wasm] tcp_client[{}] recv a io error: {}", conn_id, e);
                             connects.remove(conn_id);
                         }
                         poll::EventType::Read => match handle_connection_read(client) {
                             Ok(true) => {
-                                println!("tcp_client[{}] is closed", conn_id);
+                                println!("[wasm] tcp_client[{}] is closed", conn_id);
                                 connects.remove(conn_id);
                             }
                             Err(e) => {
-                                println!("tcp_client[{}] recv a io error: {}", conn_id, e);
+                                println!("[wasm] tcp_client[{}] recv a io error: {}", conn_id, e);
                                 connects.remove(conn_id);
                             }
                             _ => {}
@@ -176,9 +176,9 @@ fn handle_connection_read(connection: &mut TcpStream) -> io::Result<bool> {
 
     if !received_data.is_empty() {
         if let Ok(str_buf) = std::str::from_utf8(&received_data) {
-            println!("Received data: {}", str_buf.trim_end());
+            println!("[wasm] Received data: {}", str_buf.trim_end());
         } else {
-            println!("Received (none UTF-8) data: {:?}", received_data);
+            println!("[wasm] Received (none UTF-8) data: {:?}", received_data);
         }
     }
 
