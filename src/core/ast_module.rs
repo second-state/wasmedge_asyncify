@@ -53,11 +53,21 @@ impl Loader {
     }
 
     pub fn load_async_module_from_bytes(&self, wasm: &[u8]) -> Result<AstModule, CoreError> {
+        let asyncify_imports = [
+            "*.async_*",
+            "wasi_snapshot_preview1.sock_accept",
+            "wasi_snapshot_preview1.sock_connect",
+            "wasi_snapshot_preview1.sock_send",
+            "wasi_snapshot_preview1.sock_send_to",
+            "wasi_snapshot_preview1.sock_recv",
+            "wasi_snapshot_preview1.sock_recv_from",
+            "wasi_snapshot_preview1.poll_oneoff",
+        ];
         let mut codegen_config = CodegenConfig::default();
         codegen_config.optimization_level = 2;
         codegen_config
             .pass_argument
-            .push(("asyncify-imports".to_string(), "*.async_".to_string()));
+            .push(("asyncify-imports".to_string(), asyncify_imports.join(",")));
 
         let new_wasm = pass_async_module(wasm, ["asyncify", "strip"], &codegen_config)
             .ok_or(CoreError::Load(CoreLoadError::ReadError))?;
