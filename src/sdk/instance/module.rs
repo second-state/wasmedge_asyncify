@@ -53,6 +53,7 @@ impl<'a> AsyncInstance<'a> {
         Ok(())
     }
 
+    #[allow(dead_code)]
     fn asyncify_normal(&mut self) -> Result<(), CallError> {
         let f = self.inner.get_func("asyncify_stop_unwind")?;
         self.executor.run_func_ref(&f, &[])?;
@@ -200,13 +201,7 @@ impl Future for CallFuture<'_> {
                 Ok(false) => Poll::Pending,
                 Err(_) => Poll::Ready(Err(CoreError::Asyncify)),
             },
-            Err(e) => {
-                if let Err(_) = inst.asyncify_normal() {
-                    Poll::Ready(Err(CoreError::Asyncify))
-                } else {
-                    Poll::Ready(Err(e))
-                }
-            }
+            Err(e) => Poll::Ready(Err(e)),
         }
     }
 }
@@ -408,7 +403,7 @@ impl<T: Send + Sized> ImportModule<T> {
                 ty,
                 wrapper_async_fn::<T>,
                 real_fn as *mut _,
-                &mut self.data,
+                self.data.as_mut(),
             )
             .ok_or(AddFuncError::FunctionCreate)?;
 
@@ -433,7 +428,7 @@ impl<T: Send + Sized> ImportModule<T> {
                 ty,
                 wrapper_sync_fn::<T>,
                 real_fn as *mut _,
-                &mut self.data,
+                self.data.as_mut(),
             )
             .ok_or(AddFuncError::FunctionCreate)?;
 

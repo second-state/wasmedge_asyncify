@@ -74,7 +74,7 @@ pub(crate) trait AsInstance {
 pub struct ImportModule<T: Sized + Send> {
     pub(crate) inner: InnerInstance,
     pub(crate) name: String,
-    pub(crate) data: T,
+    pub(crate) data: Box<T>,
 }
 
 impl<T: Sized + Send> ImportModule<T> {
@@ -87,7 +87,7 @@ impl<T: Sized + Send> ImportModule<T> {
             false => Ok(Self {
                 inner: InnerInstance(ctx),
                 name: name.as_ref().to_string(),
-                data,
+                data: Box::new(data),
             }),
         }
     }
@@ -96,7 +96,7 @@ impl<T: Sized + Send> ImportModule<T> {
         self.name.to_owned()
     }
 
-    pub fn unpack(self) -> T {
+    pub fn unpack(self) -> Box<T> {
         self.data
     }
 }
