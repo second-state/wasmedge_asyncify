@@ -1,4 +1,5 @@
 use std::ops::{Deref, DerefMut};
+use std::path::PathBuf;
 
 use crate::error::{CoreError, CoreExecutionError};
 use crate::module::ResultFuture;
@@ -33,6 +34,8 @@ fn to_wasm_return(r: Result<(), Errno>) -> Vec<types::WasmVal> {
 fn func_type_miss_match_error() -> CoreError {
     CoreError::Execution(CoreExecutionError::FuncTypeMismatch)
 }
+
+pub struct NotDirError;
 
 impl AsyncWasiImport {
     pub fn new() -> Option<Self> {
@@ -565,7 +568,7 @@ impl AsyncWasiImport {
             .ok()?;
         module
             .add_sync_func(
-                "sock_send_to",
+                "sock_shutdown",
                 (vec![ValType::I32, ValType::I32], vec![ValType::I32]),
                 sock_shutdown,
             )
@@ -633,6 +636,26 @@ impl AsyncWasiImport {
             )
             .ok()?;
         Some(AsyncWasiImport(module))
+    }
+
+    pub fn push_preopen(&mut self, dir: std::fs::File, path: PathBuf) -> Result<(), NotDirError> {
+        use wasmedge_async_wasi::snapshots::common::vfs::WasiPreOpenDir;
+
+        let dir_meta = dir.metadata().or(Err(NotDirError))?;
+        if !dir_meta.is_dir() {
+            return Err(NotDirError);
+        }
+
+        self.0.data.push_preopen(WasiPreOpenDir::new(dir, path));
+        Ok(())
+    }
+
+    pub fn push_arg(&mut self, arg: String) {
+        self.0.data.push_arg(arg);
+    }
+
+    pub fn push_env(&mut self, key: &str, value: &str) {
+        self.0.data.push_env(key, value);
     }
 }
 
@@ -1511,6 +1534,7 @@ pub fn sock_open<'a>(
         let af = *p1 as u8;
         let ty = *p2 as u8;
         let ro_fd_ptr = *p3 as usize;
+
         Ok(to_wasm_return(p::async_socket::sock_open(
             ctx,
             mem,
@@ -1556,6 +1580,7 @@ pub fn sock_listen<'a>(
     if let Some([WasmVal::I32(p1), WasmVal::I32(p2)]) = args.get(0..n) {
         let fd = *p1;
         let backlog = *p2 as u32;
+
         Ok(to_wasm_return(p::async_socket::sock_listen(
             ctx, mem, fd, backlog,
         )))
