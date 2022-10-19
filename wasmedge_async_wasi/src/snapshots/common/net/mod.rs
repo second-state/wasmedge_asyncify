@@ -49,6 +49,7 @@ pub struct WasiSocketState {
     pub so_send_buf_size: usize,
     pub so_recv_timeout: Option<Duration>,
     pub so_send_timeout: Option<Duration>,
+    pub fs_rights: WASIRights,
 }
 
 use super::error::Errno;

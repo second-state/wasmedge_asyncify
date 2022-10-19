@@ -342,6 +342,8 @@ pub fn fd_fdstat_get<M: Memory>(
         VFD::Inode(INode::Dir(dir_fs)) => {
             mem.write_data(buf_ptr, __wasi_fdstat_t::from(dir_fs.fd_fdstat_get()?))
         }
+        VFD::Socket(s) => mem.write_data(buf_ptr, __wasi_fdstat_t::from(s.fd_fdstat_get()?)),
+        VFD::AsyncSocket(s) => mem.write_data(buf_ptr, __wasi_fdstat_t::from(s.fd_fdstat_get()?)),
         _ => Err(Errno::__WASI_ERRNO_BADF),
     }
 }
@@ -357,9 +359,20 @@ pub fn fd_fdstat_set_flags<M: Memory>(
     use env::VFD;
 
     let fdflags = FdFlags::from_bits_truncate(flags);
+
     let fd = ctx.get_mut_vfd(fd)?;
     match fd {
         VFD::Inode(INode::File(fs)) => fs.fd_fdstat_set_flags(fdflags),
+        VFD::Socket(s) => {
+            s.set_nonblocking(fdflags.contains(FdFlags::NONBLOCK))?;
+            Ok(())
+        }
+        #[cfg(all(unix, feature = "async_tokio"))]
+        VFD::AsyncSocket(s) => {
+            s.set_nonblocking(fdflags.contains(FdFlags::NONBLOCK))?;
+            Ok(())
+        }
+
         _ => Err(Errno::__WASI_ERRNO_BADF),
     }
 }

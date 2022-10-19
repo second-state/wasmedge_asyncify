@@ -23,7 +23,7 @@ impl VFD {
         }
     }
 
-    #[cfg(feature = "async_tokio")]
+    #[cfg(all(unix, feature = "async_tokio"))]
     pub fn is_async_socket(&self) -> bool {
         if let VFD::AsyncSocket(_) = self {
             true

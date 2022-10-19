@@ -1,4 +1,5 @@
 use std::ops::DerefMut;
+use std::os::unix::prelude::FromRawFd;
 
 use super::*;
 use crate::snapshots::common::types as wasi_types;
@@ -7,18 +8,107 @@ use crate::snapshots::env::Errno;
 
 use socket2::{SockAddr, Socket};
 use std::os::unix::prelude::{AsRawFd, RawFd};
+use tokio::io::unix::AsyncFdReadyGuard;
 use tokio::io::unix::{AsyncFd, TryIoError};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-pub struct AsyncWasiSocket {
-    pub inner: AsyncFd<Socket>,
-    pub state: WasiSocketState,
+pub(crate) enum AsyncWasiSocketInner {
+    PreOpen(Socket),
+    AsyncFd(AsyncFd<Socket>),
 }
 
-impl AsRawFd for AsyncWasiSocket {
-    fn as_raw_fd(&self) -> RawFd {
-        self.inner.as_raw_fd()
+impl AsyncWasiSocketInner {
+    fn register(&mut self) -> io::Result<()> {
+        unsafe {
+            let fd = match self {
+                AsyncWasiSocketInner::PreOpen(s) => s.as_raw_fd(),
+                AsyncWasiSocketInner::AsyncFd(_) => return Ok(()),
+            };
+            let mut new_self = Self::AsyncFd(AsyncFd::new(Socket::from_raw_fd(fd))?);
+            std::mem::swap(self, &mut new_self);
+            std::mem::forget(new_self);
+            Ok(())
+        }
     }
+
+    fn bind(&mut self, addr: &SockAddr) -> io::Result<()> {
+        match self {
+            AsyncWasiSocketInner::PreOpen(s) => {
+                s.set_reuse_address(true)?;
+                s.bind(addr)
+            }
+            AsyncWasiSocketInner::AsyncFd(_) => {
+                return Err(io::Error::from_raw_os_error(libc::EINVAL))
+            }
+        }
+    }
+
+    fn listen(&mut self, backlog: i32) -> io::Result<()> {
+        match self {
+            AsyncWasiSocketInner::PreOpen(s) => {
+                s.listen(backlog)?;
+            }
+            AsyncWasiSocketInner::AsyncFd(_) => {
+                return Err(io::Error::from_raw_os_error(libc::EINVAL))
+            }
+        }
+        self.register()
+    }
+
+    fn accept(&mut self) -> io::Result<(Socket, SockAddr)> {
+        match self {
+            AsyncWasiSocketInner::PreOpen(s) => Err(io::Error::from_raw_os_error(libc::EINVAL)),
+            AsyncWasiSocketInner::AsyncFd(s) => s.get_ref().accept(),
+        }
+    }
+
+    fn connect(&mut self, addr: &SockAddr) -> io::Result<()> {
+        let r = match self {
+            AsyncWasiSocketInner::PreOpen(s) => s.connect(addr),
+            AsyncWasiSocketInner::AsyncFd(_) => {
+                return Err(io::Error::from_raw_os_error(libc::EINVAL))
+            }
+        };
+
+        if let Err(e) = r {
+            let errno = Errno::from(&e);
+            if errno != Errno::__WASI_ERRNO_INPROGRESS {
+                Err(e)
+            } else {
+                self.register()?;
+                Err(io::Error::from_raw_os_error(libc::EINPROGRESS))
+            }
+        } else {
+            self.register()?;
+            Ok(())
+        }
+    }
+
+    fn get_ref(&self) -> io::Result<&Socket> {
+        match self {
+            AsyncWasiSocketInner::PreOpen(_) => Err(io::Error::from_raw_os_error(libc::ENOTCONN)),
+            AsyncWasiSocketInner::AsyncFd(s) => Ok(s.get_ref()),
+        }
+    }
+
+    pub(crate) async fn readable(&self) -> io::Result<AsyncFdReadyGuard<Socket>> {
+        match self {
+            AsyncWasiSocketInner::PreOpen(_) => Err(io::Error::from_raw_os_error(libc::ENOTCONN)),
+            AsyncWasiSocketInner::AsyncFd(s) => Ok(s.readable().await?),
+        }
+    }
+
+    pub(crate) async fn writable(&self) -> io::Result<AsyncFdReadyGuard<Socket>> {
+        match self {
+            AsyncWasiSocketInner::PreOpen(_) => Err(io::Error::from_raw_os_error(libc::ENOTCONN)),
+            AsyncWasiSocketInner::AsyncFd(s) => Ok(s.writable().await?),
+        }
+    }
+}
+
+pub struct AsyncWasiSocket {
+    pub(crate) inner: AsyncWasiSocketInner,
+    pub state: WasiSocketState,
 }
 
 #[inline]
@@ -29,6 +119,27 @@ fn handle_timeout_result<T>(
         r
     } else {
         Err(io::Error::from_raw_os_error(libc::EWOULDBLOCK))
+    }
+}
+
+impl AsyncWasiSocket {
+    pub fn fd_fdstat_get(&self) -> Result<FdStat, Errno> {
+        let mut filetype = match self.state.sock_type.1 {
+            SocketType::Datagram => FileType::SOCKET_DGRAM,
+            SocketType::Stream => FileType::SOCKET_STREAM,
+        };
+        let flags = if self.state.nonblocking {
+            FdFlags::NONBLOCK
+        } else {
+            FdFlags::empty()
+        };
+
+        Ok(FdStat {
+            filetype,
+            fs_rights_base: self.state.fs_rights,
+            fs_rights_inheriting: WASIRights::empty(),
+            flags,
+        })
     }
 }
 
@@ -51,7 +162,7 @@ impl AsyncWasiSocket {
         };
         inner.set_nonblocking(true)?;
         Ok(AsyncWasiSocket {
-            inner: AsyncFd::new(inner)?,
+            inner: AsyncWasiSocketInner::PreOpen(inner),
             state,
         })
     }
@@ -59,15 +170,13 @@ impl AsyncWasiSocket {
     pub fn bind(&mut self, addr: net::SocketAddr) -> io::Result<()> {
         use socket2::SockAddr;
         let sock_addr = SockAddr::from(addr.clone());
-        self.inner.get_ref().bind(&sock_addr)?;
+        self.inner.bind(&sock_addr)?;
         self.state.local_addr.insert(addr);
         Ok(())
     }
 
     pub fn listen(&mut self, backlog: u32) -> io::Result<()> {
-        let s = self.inner.get_ref();
-        s.set_reuse_address(true);
-        s.listen(backlog as i32)?;
+        self.inner.listen(backlog as i32)?;
         self.state.backlog = backlog;
         self.state.so_accept_conn = true;
         Ok(())
@@ -78,10 +187,10 @@ impl AsyncWasiSocket {
         new_state.nonblocking = self.state.nonblocking;
 
         if self.state.nonblocking {
-            let (cs, _) = self.inner.get_ref().accept()?;
+            let (cs, _) = self.inner.accept()?;
             cs.set_nonblocking(true)?;
             Ok(AsyncWasiSocket {
-                inner: AsyncFd::new(cs)?,
+                inner: AsyncWasiSocketInner::AsyncFd(AsyncFd::new(cs)?),
                 state: new_state,
             })
         } else {
@@ -91,7 +200,7 @@ impl AsyncWasiSocket {
                     let (cs, _) = s.get_ref().accept()?;
                     cs.set_nonblocking(true)?;
                     Ok(AsyncWasiSocket {
-                        inner: AsyncFd::new(cs)?,
+                        inner: AsyncWasiSocketInner::AsyncFd(AsyncFd::new(cs)?),
                         state: new_state,
                     })
                 }) {
@@ -108,12 +217,12 @@ impl AsyncWasiSocket {
 
         match (self.state.nonblocking, self.state.so_send_timeout) {
             (true, None) => {
-                self.inner.get_ref().connect(&address)?;
+                self.inner.connect(&address)?;
                 self.state.peer_addr = Some(addr);
                 Ok(())
             }
             (false, None) => {
-                if let Err(e) = self.inner.get_ref().connect(&address) {
+                if let Err(e) = self.inner.connect(&address) {
                     match e.raw_os_error() {
                         Some(libc::EINPROGRESS) => {}
                         _ => return Err(e),
@@ -127,7 +236,7 @@ impl AsyncWasiSocket {
                 }
             }
             (_, Some(timeout)) => {
-                if let Err(e) = self.inner.get_ref().connect(&address) {
+                if let Err(e) = self.inner.connect(&address) {
                     match e.raw_os_error() {
                         Some(libc::EINPROGRESS) => {}
                         _ => return Err(e),
@@ -161,7 +270,10 @@ impl AsyncWasiSocket {
 
         match (self.state.nonblocking, self.state.so_recv_timeout) {
             (true, None) => {
-                let (n, f) = self.inner.get_ref().recv_vectored_with_flags(bufs, flags)?;
+                let (n, f) = self
+                    .inner
+                    .get_ref()?
+                    .recv_vectored_with_flags(bufs, flags)?;
                 Ok((n, f.is_truncated()))
             }
             (false, None) => loop {
@@ -209,7 +321,7 @@ impl AsyncWasiSocket {
             (true, None) => {
                 let (n, f, addr) = self
                     .inner
-                    .get_ref()
+                    .get_ref()?
                     .recv_from_vectored_with_flags(bufs, flags)?;
                 Ok((n, f.is_truncated(), addr.as_socket()))
             }
@@ -250,7 +362,7 @@ impl AsyncWasiSocket {
         flags: libc::c_int,
     ) -> io::Result<usize> {
         match (self.state.nonblocking, self.state.so_send_timeout) {
-            (true, None) => self.inner.get_ref().send_vectored_with_flags(bufs, flags),
+            (true, None) => self.inner.get_ref()?.send_vectored_with_flags(bufs, flags),
             (false, None) => loop {
                 let mut guard = self.inner.writable().await?;
                 if let Ok(r) = guard.try_io(|s| s.get_ref().send_vectored_with_flags(bufs, flags)) {
@@ -289,7 +401,7 @@ impl AsyncWasiSocket {
         match (self.state.nonblocking, self.state.so_send_timeout) {
             (true, None) => self
                 .inner
-                .get_ref()
+                .get_ref()?
                 .send_to_vectored_with_flags(bufs, &address, flags),
             (false, None) => loop {
                 let mut guard = self.inner.writable().await?;
@@ -322,7 +434,7 @@ impl AsyncWasiSocket {
     }
 
     pub fn shutdown(&mut self, how: net::Shutdown) -> io::Result<()> {
-        self.inner.get_ref().shutdown(how)?;
+        self.inner.get_ref()?.shutdown(how)?;
         self.state.shutdown.insert(how);
         Ok(())
     }
@@ -331,7 +443,7 @@ impl AsyncWasiSocket {
         if let Some(addr) = self.state.peer_addr {
             Ok(addr)
         } else {
-            let addr = self.inner.get_ref().peer_addr()?.as_socket().unwrap();
+            let addr = self.inner.get_ref()?.peer_addr()?.as_socket().unwrap();
             self.state.peer_addr = Some(addr.clone());
             Ok(addr)
         }
@@ -341,7 +453,7 @@ impl AsyncWasiSocket {
         if let Some(addr) = self.state.local_addr {
             Ok(addr)
         } else {
-            let addr = self.inner.get_ref().local_addr()?.as_socket().unwrap();
+            let addr = self.inner.get_ref()?.local_addr()?.as_socket().unwrap();
             self.state.local_addr = Some(addr.clone());
             Ok(addr)
         }
@@ -361,7 +473,7 @@ impl AsyncWasiSocket {
     }
 
     pub fn get_so_accept_conn(&self) -> io::Result<bool> {
-        self.inner.get_ref().is_listener()
+        self.inner.get_ref()?.is_listener()
     }
 
     pub fn set_so_reuseaddr(&mut self, reuseaddr: bool) -> io::Result<()> {
@@ -412,6 +524,6 @@ impl AsyncWasiSocket {
     }
 
     pub fn get_so_error(&mut self) -> io::Result<Option<io::Error>> {
-        self.inner.get_ref().take_error()
+        self.inner.get_ref()?.take_error()
     }
 }

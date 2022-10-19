@@ -47,6 +47,27 @@ impl mio::event::Source for SyncWasiSocket {
 }
 
 impl SyncWasiSocket {
+    pub fn fd_fdstat_get(&self) -> Result<FdStat, Errno> {
+        let mut filetype = match self.state.sock_type.1 {
+            SocketType::Datagram => FileType::SOCKET_DGRAM,
+            SocketType::Stream => FileType::SOCKET_STREAM,
+        };
+        let flags = if self.state.nonblocking {
+            FdFlags::NONBLOCK
+        } else {
+            FdFlags::empty()
+        };
+
+        Ok(FdStat {
+            filetype,
+            fs_rights_base: self.state.fs_rights,
+            fs_rights_inheriting: WASIRights::empty(),
+            flags,
+        })
+    }
+}
+
+impl SyncWasiSocket {
     pub fn open(state: WasiSocketState) -> io::Result<Self> {
         use socket2::{Domain, Protocol, Type};
         let inner = match state.sock_type {
@@ -70,6 +91,7 @@ impl SyncWasiSocket {
         use socket2::SockAddr;
         let sock_addr = SockAddr::from(addr.clone());
         self.inner.bind(&sock_addr)?;
+        self.state.fs_rights.remove(WASIRights::SOCK_BIND);
         self.state.local_addr.insert(addr);
         Ok(())
     }

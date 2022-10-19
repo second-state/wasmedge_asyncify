@@ -1,6 +1,8 @@
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::time::Duration;
 
+use net::WASIRights;
+
 use crate::snapshots::common::memory::{Memory, WasmPtr};
 use crate::snapshots::common::net::{self, AddressFamily, SocketType, WasiSocketState};
 use crate::snapshots::common::types::*;
@@ -51,9 +53,21 @@ pub fn sock_open<M: Memory>(
     }
     match ty {
         __wasi_sock_type_t::__WASI_SOCK_TYPE_SOCK_DGRAM => {
+            state.fs_rights = WASIRights::SOCK_BIND
+                | WASIRights::SOCK_CLOSE
+                | WASIRights::SOCK_RECV_FROM
+                | WASIRights::SOCK_SEND_TO
+                | WASIRights::SOCK_SHUTDOWN
+                | WASIRights::POLL_FD_READWRITE;
             state.sock_type.1 = SocketType::Datagram;
         }
         __wasi_sock_type_t::__WASI_SOCK_TYPE_SOCK_STREAM => {
+            state.fs_rights = WASIRights::SOCK_BIND
+                | WASIRights::SOCK_CLOSE
+                | WASIRights::SOCK_RECV
+                | WASIRights::SOCK_SEND
+                | WASIRights::SOCK_SHUTDOWN
+                | WASIRights::POLL_FD_READWRITE;
             state.sock_type.1 = SocketType::Stream;
         }
         _ => return Err(Errno::__WASI_ERRNO_INVAL),

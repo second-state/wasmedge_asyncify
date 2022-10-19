@@ -205,6 +205,12 @@ bitflags! {
     }
 }
 
+impl Default for WASIRights {
+    fn default() -> Self {
+        Self::empty()
+    }
+}
+
 impl WASIRights {
     #[inline]
     pub fn fd_all() -> Self {
