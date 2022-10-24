@@ -5,7 +5,7 @@ use wasmedge_asyncify::{module::AsyncInstance, store::Store, *};
 
 fn main() {
     simple_log::quick!("trace");
-    single_thread_run(run_wasi_test("et_poll"));
+    single_thread_run(run_wasi_test("connect_in_progress"));
 }
 
 #[allow(unused)]

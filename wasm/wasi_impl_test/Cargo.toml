@@ -11,3 +11,4 @@ wasmedge_wasi_socket = { version = "0.4.2", git = "https://github.com/L-jasmine/
 ] }
 log = "0.4"
 env_logger = "0.9"
+libc = "0.2"
