@@ -61,6 +61,7 @@ impl Loader {
             "wasi_snapshot_preview1.sock_send_to",
             "wasi_snapshot_preview1.sock_recv",
             "wasi_snapshot_preview1.sock_recv_from",
+            "wasi_snapshot_preview1.sock_lookup_ip",
             "wasi_snapshot_preview1.poll_oneoff",
         ];
         let mut codegen_config = CodegenConfig::default();
