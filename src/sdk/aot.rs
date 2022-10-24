@@ -4,7 +4,7 @@ use std::{
 };
 use thiserror::Error;
 
-use crate::{core::pass_async_module, core::CodegenConfig, error::CoreError, utils, Config};
+use crate::{core::pass_module, core::CodegenConfig, error::CoreError, utils, Config};
 use wasmedge_sys_ffi as ffi;
 
 /// Defines WasmEdge AOT compiler optimization level.
@@ -320,7 +320,7 @@ impl AotCompiler {
             .pass_argument
             .push(("asyncify-imports".to_string(), "*.async_".to_string()));
 
-        let new_wasm = pass_async_module(wasm, ["asyncify", "strip"], &codegen_config)
+        let new_wasm = pass_module(wasm, ["asyncify", "strip"], &codegen_config)
             .ok_or(AotCompileError::PassAsyncifyError)?;
 
         self.compile(&new_wasm, &out_path)?;

@@ -53,25 +53,7 @@ impl Loader {
     }
 
     pub fn load_async_module_from_bytes(&self, wasm: &[u8]) -> Result<AstModule, CoreError> {
-        let asyncify_imports = [
-            "*.async_*",
-            "wasi_snapshot_preview1.sock_accept",
-            "wasi_snapshot_preview1.sock_connect",
-            "wasi_snapshot_preview1.sock_send",
-            "wasi_snapshot_preview1.sock_send_to",
-            "wasi_snapshot_preview1.sock_recv",
-            "wasi_snapshot_preview1.sock_recv_from",
-            "wasi_snapshot_preview1.sock_lookup_ip",
-            "wasi_snapshot_preview1.poll_oneoff",
-        ];
-        let mut codegen_config = CodegenConfig::default();
-        codegen_config.optimization_level = 2;
-        codegen_config
-            .pass_argument
-            .push(("asyncify-imports".to_string(), asyncify_imports.join(",")));
-
-        let new_wasm = pass_async_module(wasm, ["asyncify", "strip"], &codegen_config)
-            .ok_or(CoreError::Load(CoreLoadError::ReadError))?;
+        let new_wasm = pass_async_module(wasm)?;
         self.load_module_from_bytes(&new_wasm)
     }
 
@@ -120,7 +102,7 @@ impl Drop for AstModule {
 unsafe impl Send for AstModule {}
 unsafe impl Sync for AstModule {}
 
-pub(crate) fn pass_async_module<'a, B: AsRef<str>, I: IntoIterator<Item = B>>(
+pub(crate) fn pass_module<'a, B: AsRef<str>, I: IntoIterator<Item = B>>(
     wasm: &'a [u8],
     passes: I,
     codegen_config: &CodegenConfig,
@@ -137,4 +119,27 @@ pub(crate) fn pass_async_module<'a, B: AsRef<str>, I: IntoIterator<Item = B>>(
     } else {
         Some(Cow::Borrowed(wasm))
     }
+}
+
+pub fn pass_async_module(wasm: &[u8]) -> Result<Cow<[u8]>, CoreError> {
+    let asyncify_imports = [
+        "*.async_*",
+        "wasi_snapshot_preview1.sock_accept",
+        "wasi_snapshot_preview1.sock_connect",
+        "wasi_snapshot_preview1.sock_send",
+        "wasi_snapshot_preview1.sock_send_to",
+        "wasi_snapshot_preview1.sock_recv",
+        "wasi_snapshot_preview1.sock_recv_from",
+        "wasi_snapshot_preview1.sock_lookup_ip",
+        "wasi_snapshot_preview1.poll_oneoff",
+    ];
+    let mut codegen_config = CodegenConfig::default();
+    codegen_config.optimization_level = 2;
+    codegen_config
+        .pass_argument
+        .push(("asyncify-imports".to_string(), asyncify_imports.join(",")));
+
+    let new_wasm = pass_module(wasm, ["asyncify", "strip"], &codegen_config)
+        .ok_or(CoreError::Load(CoreLoadError::ReadError))?;
+    Ok(new_wasm)
 }
