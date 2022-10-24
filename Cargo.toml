@@ -16,6 +16,7 @@ futures = { version = "0.3" }
 libc = { version = "0.2" }
 thiserror = "1"
 scoped-tls = "1"
+log = "0.4"
 
 [dev-dependencies]
 wat = "1"

@@ -32,6 +32,7 @@ fn to_wasm_return(r: Result<(), Errno>) -> Vec<types::WasmVal> {
 
 #[inline]
 fn func_type_miss_match_error() -> CoreError {
+    log::trace!("FuncTypeMismatch");
     CoreError::Execution(CoreExecutionError::FuncTypeMismatch)
 }
 
@@ -682,6 +683,8 @@ pub fn args_get<'a>(
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
 ) -> Result<Vec<WasmVal>, CoreError> {
+    log::trace!("args_get enter");
+
     if let Some([WasmVal::I32(argv), WasmVal::I32(argv_buf)]) = args.get(0..2) {
         let argv = *argv as usize;
         let argv_buf = *argv_buf as usize;
@@ -702,6 +705,7 @@ pub fn args_sizes_get<'a>(
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
 ) -> Result<Vec<WasmVal>, CoreError> {
+    log::trace!("args_sizes_get enter");
     if let Some([WasmVal::I32(argc), WasmVal::I32(argv_buf_size)]) = args.get(0..2) {
         let argc = *argc as usize;
         let argv_buf_size = *argv_buf_size as usize;
@@ -722,6 +726,7 @@ pub fn environ_get<'a>(
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
 ) -> Result<Vec<WasmVal>, CoreError> {
+    log::trace!("environ_get enter");
     if let Some([WasmVal::I32(p1), WasmVal::I32(p2)]) = args.get(0..2) {
         let environ = *p1 as usize;
         let environ_buf = *p2 as usize;
@@ -742,6 +747,7 @@ pub fn environ_sizes_get<'a>(
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
 ) -> Result<Vec<WasmVal>, CoreError> {
+    log::trace!("environ_sizes_get enter");
     if let Some([WasmVal::I32(p1), WasmVal::I32(p2)]) = args.get(0..2) {
         let environ_count = *p1 as usize;
         let environ_buf_size = *p2 as usize;
@@ -762,6 +768,7 @@ pub fn clock_res_get<'a>(
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
 ) -> Result<Vec<WasmVal>, CoreError> {
+    log::trace!("clock_res_get enter");
     if let Some([WasmVal::I32(p1), WasmVal::I32(p2)]) = args.get(0..2) {
         let clock_id = *p1 as u32;
         let resolution_ptr = *p2 as usize;
@@ -782,6 +789,7 @@ pub fn clock_time_get<'a>(
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
 ) -> Result<Vec<WasmVal>, CoreError> {
+    log::trace!("clock_time_get enter");
     if let Some([WasmVal::I32(p1), WasmVal::I64(p2), WasmVal::I32(p3)]) = args.get(0..3) {
         let clock_id = *p1 as u32;
         let precision = *p2 as u64;
@@ -805,6 +813,7 @@ pub fn random_get<'a>(
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
 ) -> Result<Vec<WasmVal>, CoreError> {
+    log::trace!("random_get enter");
     if let Some([WasmVal::I32(p1), WasmVal::I32(p2)]) = args.get(0..2) {
         let buf = *p1 as usize;
         let buf_len = *p2 as u32;
@@ -826,6 +835,7 @@ pub fn fd_prestat_get<'a>(
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
 ) -> Result<Vec<WasmVal>, CoreError> {
+    log::trace!("fd_prestat_get enter");
     if let Some([WasmVal::I32(p1), WasmVal::I32(p2)]) = args.get(0..2) {
         let fd = *p1;
         let prestat_ptr = *p2 as usize;
@@ -847,6 +857,7 @@ pub fn fd_prestat_dir_name<'a>(
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
 ) -> Result<Vec<WasmVal>, CoreError> {
+    log::trace!("fd_prestat_dir_name enter");
     if let Some([WasmVal::I32(p1), WasmVal::I32(p2), WasmVal::I32(p3)]) = args.get(0..3) {
         let fd = *p1;
         let path_buf_ptr = *p2 as usize;
@@ -870,6 +881,7 @@ pub fn fd_renumber<'a>(
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
 ) -> Result<Vec<WasmVal>, CoreError> {
+    log::trace!("fd_renumber enter");
     if let Some([WasmVal::I32(p1), WasmVal::I32(p2)]) = args.get(0..2) {
         let from = *p1;
         let to = *p2;
@@ -886,6 +898,7 @@ pub fn fd_advise<'a>(
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
 ) -> Result<Vec<WasmVal>, CoreError> {
+    log::trace!("fd_advise enter");
     if let Some([WasmVal::I32(p1), WasmVal::I64(p2), WasmVal::I64(p3), WasmVal::I32(p4)]) =
         args.get(0..4)
     {
@@ -908,6 +921,7 @@ pub fn fd_allocate<'a>(
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
 ) -> Result<Vec<WasmVal>, CoreError> {
+    log::trace!("fd_allocate enter");
     if let Some([WasmVal::I32(p1), WasmVal::I64(p2), WasmVal::I64(p3)]) = args.get(0..3) {
         let fd = *p1;
         let offset = *p2 as u64;
@@ -925,6 +939,7 @@ pub fn fd_close<'a>(
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
 ) -> Result<Vec<WasmVal>, CoreError> {
+    log::trace!("fd_close enter");
     if let Some([WasmVal::I32(p1)]) = args.get(0..1) {
         let fd = *p1;
 
@@ -940,6 +955,7 @@ pub fn fd_seek<'a>(
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
 ) -> Result<Vec<WasmVal>, CoreError> {
+    log::trace!("fd_seek enter");
     let n = 4;
     if let Some([WasmVal::I32(p1), WasmVal::I64(p2), WasmVal::I32(p3), WasmVal::I32(p4)]) =
         args.get(0..n)
@@ -968,6 +984,7 @@ pub fn fd_sync<'a>(
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
 ) -> Result<Vec<WasmVal>, CoreError> {
+    log::trace!("fd_sync enter");
     if let Some([WasmVal::I32(p1)]) = args.get(0..1) {
         let fd = *p1;
 
@@ -983,6 +1000,7 @@ pub fn fd_datasync<'a>(
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
 ) -> Result<Vec<WasmVal>, CoreError> {
+    log::trace!("fd_datasync enter");
     if let Some([WasmVal::I32(p1)]) = args.get(0..1) {
         let fd = *p1;
 
@@ -998,6 +1016,7 @@ pub fn fd_tell<'a>(
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
 ) -> Result<Vec<WasmVal>, CoreError> {
+    log::trace!("fd_tell enter");
     if let Some([WasmVal::I32(p1), WasmVal::I32(p2)]) = args.get(0..2) {
         let fd = *p1;
         let offset = *p2 as usize;
@@ -1019,6 +1038,7 @@ pub fn fd_fdstat_get<'a>(
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
 ) -> Result<Vec<WasmVal>, CoreError> {
+    log::trace!("fd_fdstat_get enter");
     let n = 2;
     if let Some([WasmVal::I32(p1), WasmVal::I32(p2)]) = args.get(0..n) {
         let fd = *p1;
@@ -1041,6 +1061,7 @@ pub fn fd_fdstat_set_flags<'a>(
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
 ) -> Result<Vec<WasmVal>, CoreError> {
+    log::trace!("fd_fdstat_set_flags enter");
     let n = 2;
     if let Some([WasmVal::I32(p1), WasmVal::I32(p2)]) = args.get(0..n) {
         let fd = *p1;
@@ -1058,6 +1079,7 @@ pub fn fd_fdstat_set_rights<'a>(
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
 ) -> Result<Vec<WasmVal>, CoreError> {
+    log::trace!("fd_fdstat_set_rights enter");
     let n = 3;
     if let Some([WasmVal::I32(p1), WasmVal::I64(p2), WasmVal::I64(p3)]) = args.get(0..n) {
         let fd = *p1;
@@ -1082,6 +1104,7 @@ pub fn fd_filestat_get<'a>(
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
 ) -> Result<Vec<WasmVal>, CoreError> {
+    log::trace!("fd_filestat_get enter");
     let n = 2;
     if let Some([WasmVal::I32(p1), WasmVal::I32(p2)]) = args.get(0..n) {
         let fd = *p1;
@@ -1104,6 +1127,7 @@ pub fn fd_filestat_set_size<'a>(
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
 ) -> Result<Vec<WasmVal>, CoreError> {
+    log::trace!("fd_filestat_set_size enter");
     let n = 2;
     if let Some([WasmVal::I32(p1), WasmVal::I32(p2)]) = args.get(0..n) {
         let fd = *p1;
@@ -1126,6 +1150,7 @@ pub fn fd_filestat_set_times<'a>(
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
 ) -> Result<Vec<WasmVal>, CoreError> {
+    log::trace!("fd_filestat_set_times enter");
     let n = 4;
     if let Some([WasmVal::I32(p1), WasmVal::I64(p2), WasmVal::I64(p3), WasmVal::I32(p4)]) =
         args.get(0..n)
@@ -1149,6 +1174,7 @@ pub fn fd_read<'a>(
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
 ) -> Result<Vec<WasmVal>, CoreError> {
+    log::trace!("fd_read enter");
     let n = 4;
     if let Some([WasmVal::I32(p1), WasmVal::I32(p2), WasmVal::I32(p3), WasmVal::I32(p4)]) =
         args.get(0..n)
@@ -1177,6 +1203,7 @@ pub fn fd_pread<'a>(
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
 ) -> Result<Vec<WasmVal>, CoreError> {
+    log::trace!("fd_pread enter");
     let n = 5;
     if let Some(
         [WasmVal::I32(p1), WasmVal::I32(p2), WasmVal::I32(p3), WasmVal::I64(p4), WasmVal::I32(p5)],
@@ -1208,6 +1235,7 @@ pub fn fd_write<'a>(
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
 ) -> Result<Vec<WasmVal>, CoreError> {
+    log::trace!("fd_write enter");
     let n = 4;
     if let Some([WasmVal::I32(p1), WasmVal::I32(p2), WasmVal::I32(p3), WasmVal::I32(p4)]) =
         args.get(0..n)
@@ -1236,6 +1264,7 @@ pub fn fd_pwrite<'a>(
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
 ) -> Result<Vec<WasmVal>, CoreError> {
+    log::trace!("fd_pwrite enter");
     let n = 5;
     if let Some(
         [WasmVal::I32(p1), WasmVal::I32(p2), WasmVal::I32(p3), WasmVal::I64(p4), WasmVal::I32(p5)],
@@ -1267,6 +1296,7 @@ pub fn fd_readdir<'a>(
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
 ) -> Result<Vec<WasmVal>, CoreError> {
+    log::trace!("fd_readdir enter");
     let n = 5;
     if let Some(
         [WasmVal::I32(p1), WasmVal::I32(p2), WasmVal::I32(p3), WasmVal::I64(p4), WasmVal::I32(p5)],
@@ -1298,6 +1328,7 @@ pub fn path_create_directory<'a>(
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
 ) -> Result<Vec<WasmVal>, CoreError> {
+    log::trace!("path_create_directory enter");
     let n = 3;
     if let Some([WasmVal::I32(p1), WasmVal::I32(p2), WasmVal::I32(p3)]) = args.get(0..n) {
         let dirfd = *p1;
@@ -1322,6 +1353,7 @@ pub fn path_filestat_get<'a>(
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
 ) -> Result<Vec<WasmVal>, CoreError> {
+    log::trace!("path_filestat_get enter");
     let n = 5;
     if let Some(
         [WasmVal::I32(p1), WasmVal::I32(p2), WasmVal::I32(p3), WasmVal::I32(p4), WasmVal::I32(p5)],
@@ -1353,6 +1385,7 @@ pub fn path_filestat_set_times<'a>(
     _ctx: &'a mut WasiCtx,
     _args: Vec<types::WasmVal>,
 ) -> Result<Vec<WasmVal>, CoreError> {
+    log::trace!("path_filestat_set_times enter");
     Ok(vec![WasmVal::I32(Errno::__WASI_ERRNO_NOSYS.0 as i32)])
 }
 
@@ -1362,6 +1395,7 @@ pub fn path_link<'a>(
     _ctx: &'a mut WasiCtx,
     _args: Vec<types::WasmVal>,
 ) -> Result<Vec<WasmVal>, CoreError> {
+    log::trace!("path_link enter");
     Ok(vec![WasmVal::I32(Errno::__WASI_ERRNO_NOSYS.0 as i32)])
 }
 
@@ -1371,6 +1405,7 @@ pub fn path_open<'a>(
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
 ) -> Result<Vec<WasmVal>, CoreError> {
+    log::trace!("path_open enter");
     let n = 9;
     if let Some(
         [WasmVal::I32(p1), WasmVal::I32(p2), WasmVal::I32(p3), WasmVal::I32(p4), WasmVal::I32(p5), WasmVal::I64(p6), WasmVal::I64(p7), WasmVal::I32(p8), WasmVal::I32(p9)],
@@ -1410,6 +1445,7 @@ pub fn path_readlink<'a>(
     _ctx: &'a mut WasiCtx,
     _args: Vec<types::WasmVal>,
 ) -> Result<Vec<WasmVal>, CoreError> {
+    log::trace!("path_readlink enter");
     Ok(vec![WasmVal::I32(Errno::__WASI_ERRNO_NOSYS.0 as i32)])
 }
 
@@ -1419,6 +1455,7 @@ pub fn path_remove_directory<'a>(
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
 ) -> Result<Vec<WasmVal>, CoreError> {
+    log::trace!("path_remove_directory enter");
     let n = 3;
     if let Some([WasmVal::I32(p1), WasmVal::I32(p2), WasmVal::I32(p3)]) = args.get(0..n) {
         let fd = *p1;
@@ -1443,6 +1480,7 @@ pub fn path_rename<'a>(
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
 ) -> Result<Vec<WasmVal>, CoreError> {
+    log::trace!("path_rename enter");
     let n = 6;
     if let Some(
         [WasmVal::I32(p1), WasmVal::I32(p2), WasmVal::I32(p3), WasmVal::I32(p4), WasmVal::I32(p5), WasmVal::I32(p6)],
@@ -1476,6 +1514,7 @@ pub fn path_symlink<'a>(
     _ctx: &'a mut WasiCtx,
     _args: Vec<types::WasmVal>,
 ) -> Result<Vec<WasmVal>, CoreError> {
+    log::trace!("path_symlink enter");
     Ok(vec![WasmVal::I32(Errno::__WASI_ERRNO_NOSYS.0 as i32)])
 }
 
@@ -1485,6 +1524,7 @@ pub fn path_unlink_file<'a>(
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
 ) -> Result<Vec<WasmVal>, CoreError> {
+    log::trace!("path_unlink_file enter");
     let n = 3;
     if let Some([WasmVal::I32(p1), WasmVal::I32(p2), WasmVal::I32(p3)]) = args.get(0..n) {
         let fd = *p1;
@@ -1509,6 +1549,7 @@ pub fn proc_exit<'a>(
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
 ) -> Result<Vec<WasmVal>, CoreError> {
+    log::trace!("proc_exit enter");
     let n = 1;
     if let Some([WasmVal::I32(p1)]) = args.get(0..n) {
         let code = *p1 as u32;
@@ -1525,6 +1566,7 @@ pub fn proc_raise<'a>(
     _ctx: &'a mut WasiCtx,
     _args: Vec<types::WasmVal>,
 ) -> Result<Vec<WasmVal>, CoreError> {
+    log::trace!("proc_raise enter");
     Ok(vec![WasmVal::I32(Errno::__WASI_ERRNO_NOSYS.0 as i32)])
 }
 
@@ -1535,6 +1577,7 @@ pub fn sched_yield<'a>(
     _ctx: &'a mut WasiCtx,
     _args: Vec<types::WasmVal>,
 ) -> Result<Vec<WasmVal>, CoreError> {
+    log::trace!("sched_yield enter");
     Ok(vec![WasmVal::I32(Errno::__WASI_ERRNO_NOSYS.0 as i32)])
 }
 
@@ -1546,6 +1589,7 @@ pub fn sock_open<'a>(
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
 ) -> Result<Vec<WasmVal>, CoreError> {
+    log::trace!("sock_open enter");
     let n = 3;
     if let Some([WasmVal::I32(p1), WasmVal::I32(p2), WasmVal::I32(p3)]) = args.get(0..n) {
         let af = *p1 as u8;
@@ -1570,6 +1614,7 @@ pub fn sock_bind<'a>(
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
 ) -> Result<Vec<WasmVal>, CoreError> {
+    log::trace!("sock_bind enter");
     let n = 3;
     if let Some([WasmVal::I32(p1), WasmVal::I32(p2), WasmVal::I32(p3)]) = args.get(0..n) {
         let fd = *p1;
@@ -1593,6 +1638,7 @@ pub fn sock_listen<'a>(
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
 ) -> Result<Vec<WasmVal>, CoreError> {
+    log::trace!("sock_listen enter");
     let n = 2;
     if let Some([WasmVal::I32(p1), WasmVal::I32(p2)]) = args.get(0..n) {
         let fd = *p1;
@@ -1612,6 +1658,7 @@ pub fn sock_accept<'a>(
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
 ) -> ResultFuture<'a> {
+    log::trace!("sock_accept enter");
     Box::new(async move {
         let n = 2;
         if let Some([WasmVal::I32(p1), WasmVal::I32(p2)]) = args.get(0..n) {
@@ -1632,6 +1679,7 @@ pub fn sock_connect<'a>(
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
 ) -> ResultFuture<'a> {
+    log::trace!("sock_connect enter");
     Box::new(async move {
         let n = 3;
         if let Some([WasmVal::I32(p1), WasmVal::I32(p2), WasmVal::I32(p3)]) = args.get(0..n) {
@@ -1654,6 +1702,7 @@ pub fn sock_recv<'a>(
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
 ) -> ResultFuture<'a> {
+    log::trace!("sock_recv enter");
     Box::new(async move {
         let n = 6;
         if let Some(
@@ -1692,6 +1741,7 @@ pub fn sock_recv_from<'a>(
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
 ) -> ResultFuture<'a> {
+    log::trace!("sock_recv_from enter");
     Box::new(async move {
         let n = 8;
         if let Some(
@@ -1734,6 +1784,7 @@ pub fn sock_send<'a>(
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
 ) -> ResultFuture<'a> {
+    log::trace!("sock_send enter");
     Box::new(async move {
         let n = 5;
         if let Some(
@@ -1770,6 +1821,7 @@ pub fn sock_send_to<'a>(
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
 ) -> ResultFuture<'a> {
+    log::trace!("sock_send_to enter");
     Box::new(async move {
         let n = 7;
         if let Some(
@@ -1810,6 +1862,7 @@ pub fn sock_shutdown<'a>(
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
 ) -> Result<Vec<WasmVal>, CoreError> {
+    log::trace!("sock_shutdown enter");
     let n = 2;
     if let Some([WasmVal::I32(p1), WasmVal::I32(p2)]) = args.get(0..n) {
         let fd = *p1;
@@ -1828,6 +1881,7 @@ pub fn sock_getpeeraddr<'a>(
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
 ) -> Result<Vec<WasmVal>, CoreError> {
+    log::trace!("sock_getpeeraddr enter");
     let n = 4;
     if let Some([WasmVal::I32(p1), WasmVal::I32(p2), WasmVal::I32(p3), WasmVal::I32(p4)]) =
         args.get(0..n)
@@ -1855,6 +1909,7 @@ pub fn sock_getlocaladdr<'a>(
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
 ) -> Result<Vec<WasmVal>, CoreError> {
+    log::trace!("sock_getlocaladdr enter");
     let n = 4;
     if let Some([WasmVal::I32(p1), WasmVal::I32(p2), WasmVal::I32(p3), WasmVal::I32(p4)]) =
         args.get(0..n)
@@ -1882,6 +1937,7 @@ pub fn sock_getsockopt<'a>(
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
 ) -> Result<Vec<WasmVal>, CoreError> {
+    log::trace!("sock_getsockopt enter");
     let n = 5;
     if let Some(
         [WasmVal::I32(p1), WasmVal::I32(p2), WasmVal::I32(p3), WasmVal::I32(p4), WasmVal::I32(p5)],
@@ -1912,6 +1968,7 @@ pub fn sock_setsockopt<'a>(
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
 ) -> Result<Vec<WasmVal>, CoreError> {
+    log::trace!("sock_setsockopt enter");
     let n = 5;
     if let Some(
         [WasmVal::I32(p1), WasmVal::I32(p2), WasmVal::I32(p3), WasmVal::I32(p4), WasmVal::I32(p5)],
@@ -1942,6 +1999,7 @@ pub fn poll_oneoff<'a>(
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
 ) -> ResultFuture<'a> {
+    log::trace!("poll_oneoff enter");
     Box::new(async move {
         let n = 4;
         if let Some([WasmVal::I32(p1), WasmVal::I32(p2), WasmVal::I32(p3), WasmVal::I32(p4)]) =
