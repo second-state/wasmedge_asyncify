@@ -805,7 +805,7 @@ pub fn random_get<'a>(
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
 ) -> Result<Vec<WasmVal>, CoreError> {
-    if let Some([WasmVal::I32(p1), WasmVal::I64(p2)]) = args.get(0..2) {
+    if let Some([WasmVal::I32(p1), WasmVal::I32(p2)]) = args.get(0..2) {
         let buf = *p1 as usize;
         let buf_len = *p2 as u32;
 
