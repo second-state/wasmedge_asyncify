@@ -635,6 +635,23 @@ impl AsyncWasiImport {
                 poll_oneoff,
             )
             .ok()?;
+        module
+            .add_async_func(
+                "sock_lookup_ip",
+                (
+                    vec![
+                        ValType::I32,
+                        ValType::I32,
+                        ValType::I32,
+                        ValType::I32,
+                        ValType::I32,
+                        ValType::I32,
+                    ],
+                    vec![ValType::I32],
+                ),
+                sock_lookup_ip,
+            )
+            .ok()?;
         Some(AsyncWasiImport(module))
     }
 
@@ -1947,6 +1964,45 @@ pub fn poll_oneoff<'a>(
                 .await,
             ))
         } else {
+            Err(func_type_miss_match_error())
+        }
+    })
+}
+
+pub fn sock_lookup_ip<'a>(
+    _inst: &'a mut module::AsyncInstanceRef,
+    mem: &'a mut Memory,
+    ctx: &'a mut WasiCtx,
+    args: Vec<types::WasmVal>,
+) -> ResultFuture<'a> {
+    log::trace!("sock_lookup_ip enter");
+    Box::new(async move {
+        let n = 6;
+        if let Some(
+            [WasmVal::I32(p1), WasmVal::I32(p2), WasmVal::I32(p3), WasmVal::I32(p4), WasmVal::I32(p5), WasmVal::I32(p6)],
+        ) = args.get(0..n)
+        {
+            let host_name_ptr = *p1 as usize;
+            let host_name_len = *p2 as u32;
+            let lookup_type = *p3 as u8;
+            let addr_buf = *p4 as usize;
+            let addr_buf_max_len = *p5 as u32;
+            let raddr_num_ptr = *p6 as usize;
+            Ok(to_wasm_return(
+                p::async_socket::sock_lookup_ip(
+                    ctx,
+                    mem,
+                    WasmPtr::from(host_name_ptr),
+                    host_name_len,
+                    lookup_type,
+                    WasmPtr::from(addr_buf),
+                    addr_buf_max_len,
+                    WasmPtr::from(raddr_num_ptr),
+                )
+                .await,
+            ))
+        } else {
+            println!("sock_lookup_ip type_miss");
             Err(func_type_miss_match_error())
         }
     })
