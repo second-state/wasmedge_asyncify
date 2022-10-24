@@ -864,3 +864,60 @@ pub async fn poll_oneoff<M: Memory>(
     }
     Ok(())
 }
+
+pub async fn sock_lookup_ip<M: Memory>(
+    _ctx: &mut WasiCtx,
+    mem: &mut M,
+    host_name_ptr: WasmPtr<u8>,
+    host_name_len: __wasi_size_t,
+    lookup_type: __wasi_address_family_t::Type,
+    addr_buf: WasmPtr<u8>,
+    addr_buf_max_len: __wasi_size_t,
+    raddr_num_ptr: WasmPtr<__wasi_size_t>,
+) -> Result<(), Errno> {
+    match lookup_type {
+        __wasi_address_family_t::__WASI_ADDRESS_FAMILY_INET4 => {
+            let host_name_buf = mem.get_slice(host_name_ptr, host_name_len as usize)?;
+            let host_name =
+                std::str::from_utf8(host_name_buf).or(Err(Errno::__WASI_ERRNO_ILSEQ))?;
+            let addrs = tokio::net::lookup_host(format!("{host_name}:0")).await?;
+            let write_buf = mem.mut_slice(addr_buf, addr_buf_max_len as usize)?;
+            let mut i = 0;
+            for addr in addrs {
+                if let SocketAddr::V4(ip) = addr {
+                    let buf = ip.ip().octets();
+                    if let Some(w_buf) = write_buf.get_mut(i * 4..(i + 1) * 4) {
+                        w_buf.copy_from_slice(&buf);
+                        i += 1;
+                    } else {
+                        break;
+                    }
+                }
+            }
+            mem.write_data(raddr_num_ptr, i as u32)?;
+            Ok(())
+        }
+        __wasi_address_family_t::__WASI_ADDRESS_FAMILY_INET6 => {
+            let host_name_buf = mem.get_slice(host_name_ptr, host_name_len as usize)?;
+            let host_name =
+                std::str::from_utf8(host_name_buf).or(Err(Errno::__WASI_ERRNO_ILSEQ))?;
+            let addrs = tokio::net::lookup_host(format!("{host_name}:0")).await?;
+            let write_buf = mem.mut_slice(addr_buf, addr_buf_max_len as usize)?;
+            let mut i = 0;
+            for addr in addrs {
+                if let SocketAddr::V6(ip) = addr {
+                    let buf = ip.ip().octets();
+                    if let Some(w_buf) = write_buf.get_mut(i * 16..(i + 1) * 16) {
+                        w_buf.copy_from_slice(&buf);
+                        i += 1;
+                    } else {
+                        break;
+                    }
+                }
+            }
+            mem.write_data(raddr_num_ptr, i as u32)?;
+            Ok(())
+        }
+        _ => Err(Errno::__WASI_ERRNO_INVAL),
+    }
+}
