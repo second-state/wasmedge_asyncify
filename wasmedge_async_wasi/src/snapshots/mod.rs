@@ -10,8 +10,9 @@ pub struct WasiCtx {
     envs: Vec<String>,
     vfs: Vec<Option<VFD>>,
     vfs_preopen_limit: usize,
-    vfs_last_fd: usize,
-    exit_code: u32,
+    vfs_select_index: usize,
+    vfs_last_index: usize,
+    pub exit_code: u32,
 }
 
 impl WasiCtx {
@@ -25,7 +26,8 @@ impl WasiCtx {
             envs: vec![],
             vfs: vec![Some(wasi_stdin), Some(wasi_stdout), Some(wasi_stderr)],
             vfs_preopen_limit: 2,
-            vfs_last_fd: 2,
+            vfs_select_index: 2,
+            vfs_last_index: 2,
             exit_code: 0,
         };
 
@@ -35,7 +37,8 @@ impl WasiCtx {
     pub fn push_preopen(&mut self, preopen: env::vfs::WasiPreOpenDir) {
         self.vfs
             .push(Some(VFD::Inode(env::vfs::INode::PreOpenDir(preopen))));
-        self.vfs_last_fd += 1;
+        self.vfs_select_index = self.vfs.len() - 1;
+        self.vfs_last_index = self.vfs_select_index;
         self.vfs_preopen_limit += 1;
     }
 
@@ -78,36 +81,58 @@ impl WasiCtx {
     }
 
     pub fn insert_vfd(&mut self, vfd: VFD) -> Result<__wasi_fd_t, Errno> {
-        if let Some(vfs) = self.vfs.get_mut(self.vfs_last_fd..) {
+        debug_assert!(self.vfs_last_index < self.vfs.len(), "error last index");
+
+        if let Some(vfs) = self.vfs.get_mut(self.vfs_select_index..) {
             for entry in vfs {
                 if entry.is_none() {
                     let _ = entry.insert(vfd);
-                    return Ok(self.vfs_last_fd as __wasi_fd_t);
+                    if self.vfs_select_index > self.vfs_last_index {
+                        self.vfs_last_index = self.vfs_select_index;
+                    }
+                    return Ok(self.vfs_select_index as __wasi_fd_t);
                 }
-                self.vfs_last_fd += 1;
+                self.vfs_select_index += 1;
             }
         }
 
         self.vfs.push(Some(vfd));
-        self.vfs_last_fd = self.vfs.len() - 1;
+        self.vfs_select_index = self.vfs.len() - 1;
+        self.vfs_last_index = self.vfs_select_index;
 
-        Ok(self.vfs_last_fd as __wasi_fd_t)
+        Ok(self.vfs_select_index as __wasi_fd_t)
     }
 
+    // todo: add test
     pub fn remove_vfd(&mut self, fd: __wasi_fd_t) -> Result<(), Errno> {
-        if fd < 0 {
-            return Err(Errno::__WASI_ERRNO_BADF);
-        }
-        let fd = fd as usize;
+        debug_assert!(self.vfs_last_index < self.vfs.len(), "error last index");
 
-        if fd <= self.vfs_preopen_limit {
+        if fd <= self.vfs_preopen_limit as i32 {
             return Err(Errno::__WASI_ERRNO_NOTSUP);
         }
 
-        self.vfs_last_fd = fd;
-        let fd = self.vfs.get_mut(fd).ok_or(Errno::__WASI_ERRNO_BADF)?;
+        let fd = fd as usize;
 
-        let _ = fd.take();
+        let vfd = self.vfs.get_mut(fd).ok_or(Errno::__WASI_ERRNO_BADF)?;
+        let _ = vfd.take();
+
+        if fd != self.vfs_last_index {
+            self.vfs_select_index = fd.min(self.vfs_select_index);
+        } else {
+            // find last not empty fd
+            let mut i = self.vfs_last_index;
+            loop {
+                let vfd = &self.vfs[i];
+                if vfd.is_some() {
+                    self.vfs_last_index = i;
+                    self.vfs_select_index = self.vfs_select_index.min(i);
+                    break;
+                } else {
+                    i -= 1;
+                }
+            }
+        }
+
         Ok(())
     }
 
@@ -135,5 +160,128 @@ impl WasiCtx {
 
         self.vfs.insert(to, from_entry);
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod vfs_test {
+    use std::path::PathBuf;
+
+    use super::env::*;
+    use super::*;
+
+    #[test]
+    fn vfd_opt() {
+        // [0,1,2]
+        let mut ctx = WasiCtx::new();
+        // [0,1,2,3(*)]
+        ctx.push_preopen(vfs::WasiPreOpenDir::new(
+            std::fs::File::open(".").unwrap(),
+            PathBuf::from("."),
+        ));
+
+        assert_eq!(ctx.vfs_preopen_limit, 3, "vfs_preopen_limit");
+
+        fn vfd_stub() -> VFD {
+            VFD::Inode(vfs::INode::Stdin(vfs::WasiStdin))
+        }
+
+        // [0,1,2,3,4(*)]
+        let fd = ctx.insert_vfd(vfd_stub()).unwrap();
+        assert_eq!(ctx.vfs_last_index, 4, "vfs_last_index");
+        assert_eq!(ctx.vfs_select_index, 4, "vfs_select_index");
+        assert_eq!(
+            ctx.vfs_select_index, fd as usize,
+            "vfs_select_index == fd(4)"
+        );
+
+        // [0,1,2,3,4,5(*)]
+        let fd = ctx.insert_vfd(vfd_stub()).unwrap();
+        assert_eq!(ctx.vfs_last_index, 5, "vfs_last_index");
+        assert_eq!(ctx.vfs_select_index, 5, "vfs_select_index");
+        assert_eq!(
+            ctx.vfs_select_index, fd as usize,
+            "vfs_select_index == fd(5)"
+        );
+
+        // [0,1,2,3,none(*),5]
+        ctx.remove_vfd(4).unwrap();
+        assert_eq!(ctx.vfs_last_index, 5, "vfs_last_index");
+        assert_eq!(ctx.vfs_select_index, 4, "vfs_select_index");
+
+        // [0,1,2,3,4(*),5]
+        let fd = ctx.insert_vfd(vfd_stub()).unwrap();
+        assert_eq!(ctx.vfs_last_index, 5, "vfs_last_index");
+        assert_eq!(ctx.vfs_select_index, 4, "vfs_select_index");
+        assert_eq!(
+            ctx.vfs_select_index, fd as usize,
+            "vfs_select_index == fd(4)"
+        );
+
+        // [0,1,2,3,none(*),5]
+        ctx.remove_vfd(4).unwrap();
+        assert_eq!(ctx.vfs_last_index, 5, "vfs_last_index");
+        assert_eq!(ctx.vfs_select_index, 4, "vfs_select_index");
+
+        // [0,1,2,3(*),none,none]
+        ctx.remove_vfd(5).unwrap();
+        assert_eq!(ctx.vfs_last_index, 3, "vfs_last_index");
+        assert_eq!(ctx.vfs_select_index, 3, "vfs_select_index");
+        assert_eq!(ctx.vfs.len(), 6, "vfs.len()==6");
+
+        // [0,1,2,3,4(*),none]
+        let fd = ctx.insert_vfd(vfd_stub()).unwrap();
+        assert_eq!(ctx.vfs_last_index, 4, "vfs_last_index");
+        assert_eq!(ctx.vfs_select_index, 4, "vfs_select_index");
+        assert_eq!(
+            ctx.vfs_select_index, fd as usize,
+            "vfs_select_index == fd(4)"
+        );
+        assert_eq!(ctx.vfs.len(), 6, "vfs.len()==6");
+
+        // [0,1,2,3,4,5(*)]
+        let fd = ctx.insert_vfd(vfd_stub()).unwrap();
+        assert_eq!(ctx.vfs_select_index, 5, "vfs_select_index");
+        assert_eq!(fd, 5, "fd==5");
+
+        // [0,1,2,3,4,5,6(*)]
+        let fd = ctx.insert_vfd(vfd_stub()).unwrap();
+        assert_eq!(ctx.vfs_select_index, 6, "vfs_select_index");
+        assert_eq!(fd, 6, "fd==6");
+
+        assert_eq!(ctx.vfs.len(), 7, "vfs.len()==7");
+
+        // [0,1,2,3,4,none(*),6]
+        ctx.remove_vfd(5).unwrap();
+        assert_eq!(ctx.vfs_select_index, 5, "vfs_select_index");
+        // [0,1,2,3,none(*),none,6]
+        ctx.remove_vfd(4).unwrap();
+        assert_eq!(ctx.vfs_select_index, 4, "vfs_select_index");
+
+        // [0,1,2,3,4(*),none,6]
+        let fd = ctx.insert_vfd(vfd_stub()).unwrap();
+        assert_eq!(ctx.vfs_select_index, 4, "vfs_select_index");
+        assert_eq!(fd, 4, "fd==4");
+
+        // [0,1,2,3,4,5(*),6]
+        let fd = ctx.insert_vfd(vfd_stub()).unwrap();
+        assert_eq!(ctx.vfs_select_index, 5, "vfs_select_index");
+        assert_eq!(fd, 5, "fd==5");
+
+        // [0,1,2,3,none(*),5,6]
+        ctx.remove_vfd(4).unwrap();
+        assert_eq!(ctx.vfs_select_index, 4, "vfs_select_index");
+        assert_eq!(ctx.vfs_last_index, 6, "vfs_select_index");
+
+        // [0,1,2,3,none(*),none,6]
+        ctx.remove_vfd(5).unwrap();
+        assert_eq!(ctx.vfs_select_index, 4, "vfs_select_index");
+        assert_eq!(ctx.vfs_last_index, 6, "vfs_select_index");
+
+        // [0,1,2,3(*),none,none,none]
+        ctx.remove_vfd(6).unwrap();
+        assert_eq!(ctx.vfs_select_index, 3, "vfs_select_index");
+        assert_eq!(ctx.vfs_last_index, 3, "vfs_select_index");
+        assert_eq!(ctx.vfs.len(), 7, "vfs.len()==7");
     }
 }
