@@ -411,7 +411,9 @@ impl WasiFile {
         let file_len = metadata.len();
         let new_len = offset + len;
         if new_len > file_len {
+            let old_seek = f.seek(io::SeekFrom::Current(0))?;
             f.set_len(new_len)?;
+            f.seek(io::SeekFrom::Start(old_seek))?;
         }
         Ok(())
     }
