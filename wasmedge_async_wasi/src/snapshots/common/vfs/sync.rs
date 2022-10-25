@@ -26,6 +26,7 @@ fn systimespec(
     }
 }
 
+#[derive(Debug)]
 pub struct WasiStdin;
 impl WasiStdin {
     #[inline]
@@ -144,6 +145,7 @@ impl WasiStdin {
     }
 }
 
+#[derive(Debug)]
 pub struct WasiStdout;
 impl WasiStdout {
     #[inline]
@@ -262,6 +264,7 @@ impl WasiStdout {
     }
 }
 
+#[derive(Debug)]
 pub struct WasiStderr;
 impl WasiStderr {
     #[inline]
@@ -380,6 +383,7 @@ impl WasiStderr {
     }
 }
 
+#[derive(Debug)]
 pub struct WasiFile {
     pub fd: fs::File,
     pub flags: FdFlags,
@@ -647,6 +651,7 @@ impl WasiFile {
     }
 }
 
+#[derive(Debug)]
 pub struct WasiPreOpenDir {
     wasidir: WasiDir,
 }
@@ -830,6 +835,8 @@ impl WasiPreOpenDir {
         })
     }
 }
+
+#[derive(Debug)]
 pub struct WasiDir {
     pub dir: fs::File,
     // absolutize
@@ -1096,8 +1103,8 @@ impl WasiDir {
     }
 }
 
+#[derive(Debug)]
 pub enum INode {
-    Empty,
     PreOpenDir(WasiPreOpenDir),
     Dir(WasiDir),
     File(WasiFile),

@@ -12,6 +12,7 @@ use tokio::io::unix::AsyncFdReadyGuard;
 use tokio::io::unix::{AsyncFd, TryIoError};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
+#[derive(Debug)]
 pub(crate) enum AsyncWasiSocketInner {
     PreOpen(Socket),
     AsyncFd(AsyncFd<Socket>),
@@ -106,6 +107,7 @@ impl AsyncWasiSocketInner {
     }
 }
 
+#[derive(Debug)]
 pub struct AsyncWasiSocket {
     pub(crate) inner: AsyncWasiSocketInner,
     pub state: WasiSocketState,

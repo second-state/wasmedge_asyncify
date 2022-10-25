@@ -7,6 +7,7 @@ pub use super::common::net::async_tokio::AsyncWasiSocket;
 
 pub use super::common::net::sync::SyncWasiSocket;
 
+#[derive(Debug)]
 pub enum VFD {
     Inode(vfs::INode),
     Socket(SyncWasiSocket),
@@ -40,21 +41,6 @@ impl VFD {
         }
     }
 }
-
-// pub trait AsVFD: Send + Sync + From<VFD> {
-//     fn as_mut_vfd(&mut self) -> Option<&mut VFD>;
-//     fn as_ref_vfd(&self) -> Option<&VFD>;
-// }
-
-// impl AsVFD for VFD {
-//     fn as_mut_vfd(&mut self) -> Option<&mut VFD> {
-//         Some(self)
-//     }
-
-//     fn as_ref_vfd(&self) -> Option<&VFD> {
-//         Some(self)
-//     }
-// }
 
 pub trait AsyncVM: Send + Sync {
     fn yield_now(&mut self) -> Result<(), Errno>;

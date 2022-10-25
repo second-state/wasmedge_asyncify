@@ -4,6 +4,7 @@ use crate::snapshots::common::vfs;
 use crate::snapshots::env::Errno;
 use socket2::Socket;
 
+#[derive(Debug)]
 pub struct SyncWasiSocket {
     pub inner: Socket,
     pub state: WasiSocketState,
