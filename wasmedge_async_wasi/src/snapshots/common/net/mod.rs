@@ -1,6 +1,3 @@
-#[cfg(feature = "std_net")]
-pub mod sync;
-
 #[cfg(all(unix, feature = "async_tokio"))]
 pub mod async_tokio;
 

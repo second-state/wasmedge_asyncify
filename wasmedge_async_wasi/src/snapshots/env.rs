@@ -5,27 +5,16 @@ pub use super::common::vfs;
 #[cfg(all(unix, feature = "async_tokio"))]
 pub use super::common::net::async_tokio::AsyncWasiSocket;
 
-pub use super::common::net::sync::SyncWasiSocket;
-
 #[derive(Debug)]
 pub enum VFD {
     Inode(vfs::INode),
-    Socket(SyncWasiSocket),
     #[cfg(all(unix, feature = "async_tokio"))]
     AsyncSocket(AsyncWasiSocket),
 }
 
 impl VFD {
-    pub fn is_socket(&self) -> bool {
-        if let VFD::Socket(_) = self {
-            true
-        } else {
-            false
-        }
-    }
-
     #[cfg(all(unix, feature = "async_tokio"))]
-    pub fn is_async_socket(&self) -> bool {
+    pub fn is_socket(&self) -> bool {
         if let VFD::AsyncSocket(_) = self {
             true
         } else {

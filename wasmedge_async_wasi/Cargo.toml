@@ -13,10 +13,7 @@ bitflags = "1.3"
 path-absolutize = "3.0.13"
 socket2 = "0.4.7"
 futures = { version = "0.3" }
-mio = { version = "0.8", optional = true }
 
 [features]
-default = ["async_tokio", "std_net"]
-async = []
-std_net = ["mio"]
-async_tokio = ["async", "tokio"]
+default = ["async_tokio"]
+async_tokio = ["tokio"]

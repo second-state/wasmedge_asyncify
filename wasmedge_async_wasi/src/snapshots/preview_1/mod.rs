@@ -6,9 +6,6 @@ use super::common::types::*;
 use super::env::{self, AsyncVM};
 use super::WasiCtx;
 
-#[cfg(feature = "std_net")]
-pub mod socket;
-
 #[cfg(all(unix, feature = "async_tokio"))]
 pub mod async_socket;
 
@@ -342,7 +339,7 @@ pub fn fd_fdstat_get<M: Memory>(
         VFD::Inode(INode::Dir(dir_fs)) => {
             mem.write_data(buf_ptr, __wasi_fdstat_t::from(dir_fs.fd_fdstat_get()?))
         }
-        VFD::Socket(s) => mem.write_data(buf_ptr, __wasi_fdstat_t::from(s.fd_fdstat_get()?)),
+        #[cfg(all(unix, feature = "async_tokio"))]
         VFD::AsyncSocket(s) => mem.write_data(buf_ptr, __wasi_fdstat_t::from(s.fd_fdstat_get()?)),
         _ => Err(Errno::__WASI_ERRNO_BADF),
     }
@@ -363,10 +360,7 @@ pub fn fd_fdstat_set_flags<M: Memory>(
     let fd = ctx.get_mut_vfd(fd)?;
     match fd {
         VFD::Inode(INode::File(fs)) => fs.fd_fdstat_set_flags(fdflags),
-        VFD::Socket(s) => {
-            s.set_nonblocking(fdflags.contains(FdFlags::NONBLOCK))?;
-            Ok(())
-        }
+
         #[cfg(all(unix, feature = "async_tokio"))]
         VFD::AsyncSocket(s) => {
             s.set_nonblocking(fdflags.contains(FdFlags::NONBLOCK))?;
