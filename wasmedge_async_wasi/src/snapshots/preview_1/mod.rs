@@ -258,10 +258,7 @@ pub fn fd_seek<M: Memory>(
             *newoffset = fs.fd_seek(offset, whence)?.to_le();
             Ok(())
         }
-        VFD::Inode(INode::Stdin(_)) => Err(Errno::__WASI_ERRNO_SPIPE),
-        VFD::Inode(INode::Stdout(_)) => Err(Errno::__WASI_ERRNO_SPIPE),
-        VFD::Inode(INode::Stderr(_)) => Err(Errno::__WASI_ERRNO_SPIPE),
-        _ => Err(Errno::__WASI_ERRNO_BADF),
+        _ => Err(Errno::__WASI_ERRNO_SPIPE),
     }
 }
 
@@ -309,7 +306,7 @@ pub fn fd_tell<M: Memory>(
         VFD::Inode(INode::Stdin(fs)) => mem.write_data(offset, fs.fd_tell()?),
         VFD::Inode(INode::Stdout(fs)) => mem.write_data(offset, fs.fd_tell()?),
         VFD::Inode(INode::Stderr(fs)) => mem.write_data(offset, fs.fd_tell()?),
-        _ => Err(Errno::__WASI_ERRNO_BADF),
+        _ => Err(Errno::__WASI_ERRNO_SPIPE),
     }
 }
 
