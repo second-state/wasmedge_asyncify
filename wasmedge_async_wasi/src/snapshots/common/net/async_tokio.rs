@@ -21,11 +21,15 @@ pub(crate) enum AsyncWasiSocketInner {
 impl AsyncWasiSocketInner {
     fn register(&mut self) -> io::Result<()> {
         unsafe {
-            let fd = match self {
-                AsyncWasiSocketInner::PreOpen(s) => s.as_raw_fd(),
+            let inner = match self {
+                AsyncWasiSocketInner::PreOpen(s) => {
+                    let mut inner_socket = std::mem::zeroed();
+                    std::mem::swap(s, &mut inner_socket);
+                    inner_socket
+                }
                 AsyncWasiSocketInner::AsyncFd(_) => return Ok(()),
             };
-            let mut new_self = Self::AsyncFd(AsyncFd::new(Socket::from_raw_fd(fd))?);
+            let mut new_self = Self::AsyncFd(AsyncFd::new(inner)?);
             std::mem::swap(self, &mut new_self);
             std::mem::forget(new_self);
             Ok(())
