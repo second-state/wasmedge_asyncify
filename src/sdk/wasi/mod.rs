@@ -36,6 +36,7 @@ fn func_type_miss_match_error() -> CoreError {
     CoreError::Execution(CoreExecutionError::FuncTypeMismatch)
 }
 
+#[derive(Debug)]
 pub struct NotDirError;
 
 impl AsyncWasiImport {
@@ -656,15 +657,22 @@ impl AsyncWasiImport {
         Some(AsyncWasiImport(module))
     }
 
-    pub fn push_preopen(&mut self, dir: std::fs::File, path: PathBuf) -> Result<(), NotDirError> {
+    pub fn push_preopen(
+        &mut self,
+        host_path: PathBuf,
+        guest_path: PathBuf,
+    ) -> Result<(), NotDirError> {
         use wasmedge_async_wasi::snapshots::common::vfs::WasiPreOpenDir;
 
-        let dir_meta = dir.metadata().or(Err(NotDirError))?;
+        let dir_meta = std::fs::metadata(&host_path).or(Err(NotDirError))?;
+
         if !dir_meta.is_dir() {
             return Err(NotDirError);
         }
 
-        self.0.data.push_preopen(WasiPreOpenDir::new(dir, path));
+        self.0
+            .data
+            .push_preopen(WasiPreOpenDir::new(host_path, guest_path));
         Ok(())
     }
 

@@ -478,20 +478,8 @@ impl WasiFile {
             FileType::REGULAR_FILE
         };
 
-        let nlink;
-        let inode;
-        #[cfg(unix)]
-        {
-            use std::os::unix::prelude::MetadataExt;
-
-            nlink = meta.nlink();
-            inode = meta.ino();
-        }
-        #[cfg(not(unix))]
-        {
-            nlink = 1;
-            inode = 0;
-        }
+        let nlink = get_file_nlink(&meta);
+        let inode = get_file_ino(&meta);
 
         Ok(Filestat {
             filetype,
@@ -655,6 +643,7 @@ impl WasiFile {
 
 #[derive(Debug)]
 pub struct WasiPreOpenDir {
+    guest_path: PathBuf,
     wasidir: WasiDir,
 }
 
@@ -672,11 +661,11 @@ impl DerefMut for WasiPreOpenDir {
 }
 
 impl WasiPreOpenDir {
-    pub fn new(dir: fs::File, path: PathBuf) -> Self {
+    pub fn new(host_path: PathBuf, guest_path: PathBuf) -> Self {
         WasiPreOpenDir {
+            guest_path,
             wasidir: WasiDir {
-                dir,
-                path,
+                real_path: host_path,
                 dir_rights: WASIRights::dir_all(),
                 file_rights: WASIRights::fd_all(),
             },
@@ -685,10 +674,10 @@ impl WasiPreOpenDir {
 
     pub fn get_absolutize_path<P: AsRef<Path>>(&self, sub_path: &P) -> Result<PathBuf, Errno> {
         use path_absolutize::*;
-        let mut new_path = self.path.clone();
+        let mut new_path = self.real_path.clone();
         new_path.join(sub_path);
         let absolutize = new_path
-            .absolutize_virtually(&self.path)
+            .absolutize_virtually(&self.real_path)
             .or(Err(Errno::__WASI_ERRNO_NOENT))?;
         Ok(absolutize.to_path_buf())
     }
@@ -777,8 +766,7 @@ impl WasiPreOpenDir {
         }
 
         Ok(WasiDir {
-            dir: f,
-            path,
+            real_path: path,
             dir_rights,
             file_rights,
         })
@@ -840,9 +828,8 @@ impl WasiPreOpenDir {
 
 #[derive(Debug)]
 pub struct WasiDir {
-    pub dir: fs::File,
     // absolutize
-    pub path: PathBuf,
+    pub real_path: PathBuf,
     pub dir_rights: WASIRights,
     pub file_rights: WASIRights,
 }
@@ -896,9 +883,13 @@ fn write_dirent(entity: &ReaddirEntity, write_buf: &mut [u8]) -> usize {
 }
 
 impl WasiDir {
+    fn metadata(&self) -> io::Result<fs::Metadata> {
+        fs::metadata(&self.real_path)
+    }
+
     pub fn fd_readdir(&self, mut cursor: usize, write_buf: &mut [u8]) -> Result<usize, Errno> {
         self.dir_rights.can(WASIRights::FD_READDIR)?;
-        let dir_meta = self.dir.metadata()?;
+        let dir_meta = self.metadata()?;
         let dir_ino = get_file_ino(&dir_meta);
 
         let buflen = write_buf.len();
@@ -942,7 +933,7 @@ impl WasiDir {
             cursor = 0;
         }
 
-        let read_dir = self.path.read_dir()?;
+        let read_dir = self.real_path.read_dir()?;
         for dir_entity in read_dir.into_iter().skip(cursor) {
             next += 1;
 
@@ -1004,27 +995,15 @@ impl WasiDir {
 
     pub fn fd_filestat_get(&mut self) -> Result<Filestat, Errno> {
         self.dir_rights.can(WASIRights::FD_FILESTAT_GET)?;
-        let meta = self.dir.metadata()?;
+        let meta = self.metadata()?;
         let filetype = if meta.is_symlink() {
             FileType::SYMBOLIC_LINK
         } else {
             FileType::DIRECTORY
         };
 
-        let nlink;
-        let inode;
-        #[cfg(unix)]
-        {
-            use std::os::unix::prelude::MetadataExt;
-
-            nlink = meta.nlink();
-            inode = meta.ino();
-        }
-        #[cfg(not(unix))]
-        {
-            nlink = 1;
-            inode = 0;
-        }
+        let nlink = get_file_nlink(&meta);
+        let inode = get_file_ino(&meta);
 
         Ok(Filestat {
             filetype,
@@ -1044,64 +1023,8 @@ impl WasiDir {
         fst_flags: wasi_types::__wasi_fstflags_t::Type,
     ) -> Result<(), Errno> {
         use wasi_types::__wasi_fstflags_t;
-
         self.dir_rights.can(WASIRights::FD_FILESTAT_SET_TIMES)?;
-
-        let set_atim = (fst_flags & __wasi_fstflags_t::__WASI_FSTFLAGS_ATIM) > 0;
-        let set_atim_now = (fst_flags & __wasi_fstflags_t::__WASI_FSTFLAGS_ATIM_NOW) > 0;
-        let set_mtim = (fst_flags & __wasi_fstflags_t::__WASI_FSTFLAGS_MTIM) > 0;
-        let set_mtim_now = (fst_flags & __wasi_fstflags_t::__WASI_FSTFLAGS_MTIM_NOW) > 0;
-
-        let atim = systimespec(set_atim, atim, set_atim_now)?;
-        let mtim = systimespec(set_mtim, mtim, set_mtim_now)?;
-
-        #[cfg(unix)]
-        {
-            use std::os::unix::prelude::AsRawFd;
-            let fd = self.dir.as_raw_fd();
-            let times = [
-                {
-                    match atim {
-                        Some(SystemTimeSpec::Absolute(atim)) => libc::timespec {
-                            tv_sec: atim.as_secs() as i64,
-                            tv_nsec: atim.subsec_nanos() as i64,
-                        },
-                        Some(SystemTimeSpec::SymbolicNow) => libc::timespec {
-                            tv_sec: 0,
-                            tv_nsec: libc::UTIME_NOW,
-                        },
-                        None => libc::timespec {
-                            tv_sec: 0,
-                            tv_nsec: libc::UTIME_OMIT,
-                        },
-                    }
-                },
-                {
-                    match mtim {
-                        Some(SystemTimeSpec::Absolute(mtim)) => libc::timespec {
-                            tv_sec: mtim.as_secs() as i64,
-                            tv_nsec: mtim.subsec_nanos() as i64,
-                        },
-                        Some(SystemTimeSpec::SymbolicNow) => libc::timespec {
-                            tv_sec: 0,
-                            tv_nsec: libc::UTIME_NOW,
-                        },
-                        None => libc::timespec {
-                            tv_sec: 0,
-                            tv_nsec: libc::UTIME_OMIT,
-                        },
-                    }
-                },
-            ];
-            if unsafe { libc::futimens(fd, times.as_ptr()) } < 0 {
-                Err(std::io::Error::last_os_error())?;
-            }
-            Ok(())
-        }
-        #[cfg(not(unix))]
-        {
-            Err(Errno::__WASI_ERRNO_NOSYS)
-        }
+        Err(Errno::__WASI_ERRNO_NOSYS)
     }
 }
 

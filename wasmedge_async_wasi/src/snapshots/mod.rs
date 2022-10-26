@@ -176,7 +176,7 @@ mod vfs_test {
         let mut ctx = WasiCtx::new();
         // [0,1,2,3(*)]
         ctx.push_preopen(vfs::WasiPreOpenDir::new(
-            std::fs::File::open(".").unwrap(),
+            PathBuf::from("."),
             PathBuf::from("."),
         ));
 
