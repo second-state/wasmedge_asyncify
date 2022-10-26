@@ -5,7 +5,7 @@ use wasmedge_asyncify::{module::AsyncInstance, store::Store, *};
 
 fn main() {
     simple_log::quick!("trace");
-    single_thread_run(run_wasi_test("connect_in_progress"));
+    single_thread_run(run_wasi_test("list_cwd"));
 }
 
 #[allow(unused)]
@@ -43,6 +43,9 @@ async fn run_wasi_test(name: &str) {
     let mut wasi_import = wasmedge_asyncify::wasi::AsyncWasiImport::new().unwrap();
     wasi_import.push_arg(name.to_string());
     wasi_import.push_env("RUST_LOG", "info");
+    wasi_import
+        .push_preopen(".".parse().unwrap(), ".".parse().unwrap())
+        .unwrap();
 
     store
         .register_import_object(&executor, &mut wasi_import)

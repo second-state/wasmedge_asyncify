@@ -1,5 +1,6 @@
 use log::info;
 mod et_poll;
+mod fs;
 
 fn main() {
     env_logger::init();
@@ -13,6 +14,7 @@ fn main() {
         "accept_would_block" => accept_would_block(),
         "connect_in_progress" => connect_in_progress(),
         "et_poll" => et_poll::main_run().unwrap(),
+        "list_cwd" => fs::list_cwd(),
         _ => {}
     }
 }
