@@ -760,8 +760,8 @@ impl WasiPreOpenDir {
 
         let dir_rights = self.dir_rights & fs_rights_base;
         let file_rights = self.file_rights & fs_rights_inheriting;
-        let f = fs::File::open(&path)?;
-        if !f.metadata()?.is_dir() {
+        let meta = fs::metadata(&path)?;
+        if !meta.is_dir() {
             return Err(Errno::__WASI_ERRNO_NOTDIR);
         }
 
