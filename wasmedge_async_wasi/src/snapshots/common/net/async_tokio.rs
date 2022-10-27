@@ -150,8 +150,26 @@ impl AsyncWasiSocket {
 }
 
 impl AsyncWasiSocket {
-    pub fn open(state: WasiSocketState) -> io::Result<Self> {
+    pub fn open(mut state: WasiSocketState) -> io::Result<Self> {
         use socket2::{Domain, Protocol, Type};
+        match state.sock_type.1 {
+            SocketType::Stream => {
+                state.fs_rights = WASIRights::SOCK_BIND
+                    | WASIRights::SOCK_CLOSE
+                    | WASIRights::SOCK_RECV
+                    | WASIRights::SOCK_SEND
+                    | WASIRights::SOCK_SHUTDOWN
+                    | WASIRights::POLL_FD_READWRITE;
+            }
+            SocketType::Datagram => {
+                state.fs_rights = WASIRights::SOCK_BIND
+                    | WASIRights::SOCK_CLOSE
+                    | WASIRights::SOCK_RECV_FROM
+                    | WASIRights::SOCK_SEND_TO
+                    | WASIRights::SOCK_SHUTDOWN
+                    | WASIRights::POLL_FD_READWRITE;
+            }
+        }
         let inner = match state.sock_type {
             (AddressFamily::Inet4, SocketType::Datagram) => {
                 Socket::new(Domain::IPV4, Type::DGRAM, Some(Protocol::UDP))?

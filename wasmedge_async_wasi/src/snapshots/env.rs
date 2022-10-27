@@ -7,6 +7,7 @@ pub use super::common::net::async_tokio::AsyncWasiSocket;
 
 #[derive(Debug)]
 pub enum VFD {
+    Closed,
     Inode(vfs::INode),
     #[cfg(all(unix, feature = "async_tokio"))]
     AsyncSocket(AsyncWasiSocket),

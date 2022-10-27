@@ -1,7 +1,6 @@
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 
 use net::async_tokio::AsyncWasiSocket;
-use net::WASIRights;
 use tokio::io::unix::AsyncFdReadyGuard;
 
 use crate::snapshots::common::memory::{Memory, WasmPtr};
@@ -54,21 +53,9 @@ pub fn sock_open<M: Memory>(
     }
     match ty {
         __wasi_sock_type_t::__WASI_SOCK_TYPE_SOCK_DGRAM => {
-            state.fs_rights = WASIRights::SOCK_BIND
-                | WASIRights::SOCK_CLOSE
-                | WASIRights::SOCK_RECV_FROM
-                | WASIRights::SOCK_SEND_TO
-                | WASIRights::SOCK_SHUTDOWN
-                | WASIRights::POLL_FD_READWRITE;
             state.sock_type.1 = SocketType::Datagram;
         }
         __wasi_sock_type_t::__WASI_SOCK_TYPE_SOCK_STREAM => {
-            state.fs_rights = WASIRights::SOCK_BIND
-                | WASIRights::SOCK_CLOSE
-                | WASIRights::SOCK_RECV
-                | WASIRights::SOCK_SEND
-                | WASIRights::SOCK_SHUTDOWN
-                | WASIRights::POLL_FD_READWRITE;
             state.sock_type.1 = SocketType::Stream;
         }
         _ => return Err(Errno::__WASI_ERRNO_INVAL),
@@ -754,12 +741,19 @@ pub async fn poll_oneoff<M: Memory>(
                 let mut i = 0;
 
                 for SubscriptionFd { fd, type_ } in fd_vec {
-                    if let VFD::AsyncSocket(s) = ctx.get_vfd(fd)? {
-                        wait.push(wait_fd(s, type_));
-                    } else {
-                        r_events[i] = to_r_event(type_, Errno::__WASI_ERRNO_NOTSOCK);
-                        i += 1;
-                    };
+                    match ctx.get_vfd(fd) {
+                        Ok(VFD::AsyncSocket(s)) => {
+                            wait.push(wait_fd(s, type_));
+                        }
+                        Ok(VFD::Closed) => {
+                            r_events[i] = to_r_event(type_, Errno::__WASI_ERRNO_IO);
+                            i += 1;
+                        }
+                        _ => {
+                            r_events[i] = to_r_event(type_, Errno::__WASI_ERRNO_NOTSOCK);
+                            i += 1;
+                        }
+                    }
                 }
 
                 if i == 0 {
@@ -798,12 +792,19 @@ pub async fn poll_oneoff<M: Memory>(
             let mut i = 0;
 
             for SubscriptionFd { fd, type_ } in fd_vec {
-                if let VFD::AsyncSocket(s) = ctx.get_vfd(fd)? {
-                    wait.push(wait_fd(s, type_));
-                } else {
-                    r_events[i] = to_r_event(type_, Errno::__WASI_ERRNO_NOTSOCK);
-                    i += 1;
-                };
+                match ctx.get_vfd(fd) {
+                    Ok(VFD::AsyncSocket(s)) => {
+                        wait.push(wait_fd(s, type_));
+                    }
+                    Ok(VFD::Closed) => {
+                        r_events[i] = to_r_event(type_, Errno::__WASI_ERRNO_IO);
+                        i += 1;
+                    }
+                    _ => {
+                        r_events[i] = to_r_event(type_, Errno::__WASI_ERRNO_NOTSOCK);
+                        i += 1;
+                    }
+                }
             }
 
             if i == 0 {

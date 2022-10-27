@@ -643,7 +643,7 @@ impl WasiFile {
 
 #[derive(Debug)]
 pub struct WasiPreOpenDir {
-    guest_path: PathBuf,
+    pub guest_path: PathBuf,
     wasidir: WasiDir,
 }
 
