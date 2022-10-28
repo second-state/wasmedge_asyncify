@@ -121,6 +121,7 @@ pub enum Subscription {
 
 impl Subscription {
     pub fn from(s: &__wasi_subscription_t) -> Result<Subscription, Errno> {
+        use wasi_types::__wasi_clockid_t::__WASI_CLOCKID_MONOTONIC as CLOCKID_MONOTONIC;
         use wasi_types::__wasi_clockid_t::__WASI_CLOCKID_REALTIME as CLOCKID_REALTIME;
         use wasi_types::__wasi_eventtype_t::{
             __WASI_EVENTTYPE_CLOCK as CLOCK, __WASI_EVENTTYPE_FD_READ as RD,
@@ -132,7 +133,7 @@ impl Subscription {
             CLOCK => {
                 let clock = unsafe { s.u.u.clock };
                 match clock.id {
-                    CLOCKID_REALTIME => {
+                    CLOCKID_REALTIME | CLOCKID_MONOTONIC => {
                         if clock.flags == 1 {
                             let now = std::time::SystemTime::now();
                             if let Some(ddl) = std::time::UNIX_EPOCH
@@ -169,6 +170,7 @@ impl Subscription {
                             }
                         }
                     }
+
                     _ => Ok(Subscription::RealClock(SubscriptionClock {
                         timeout: None,
                         userdata,

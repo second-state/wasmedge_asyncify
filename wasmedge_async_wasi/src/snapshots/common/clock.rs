@@ -19,7 +19,7 @@ pub fn wasi_clock_time_get(
 ) -> Result<u64, Errno> {
     use std::time::SystemTime;
     match clock_id {
-        __wasi_clockid_t::__WASI_CLOCKID_REALTIME => {
+        __wasi_clockid_t::__WASI_CLOCKID_REALTIME | __wasi_clockid_t::__WASI_CLOCKID_MONOTONIC => {
             let d = SystemTime::now()
                 .duration_since(SystemTime::UNIX_EPOCH)
                 .unwrap();
