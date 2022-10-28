@@ -14,9 +14,16 @@ fn main() {
         "accept_would_block" => accept_would_block(),
         "connect_in_progress" => connect_in_progress(),
         "et_poll" => et_poll::main_run().unwrap(),
+        "sleep" => sleep_test(),
         "list_cwd" => fs::list_cwd(),
         _ => {}
     }
+}
+
+fn sleep_test() {
+    info!("sleep 5s ...");
+    std::thread::sleep(std::time::Duration::from_secs(5));
+    info!("sleep 5s wake up!")
 }
 
 fn nslookup_test() {

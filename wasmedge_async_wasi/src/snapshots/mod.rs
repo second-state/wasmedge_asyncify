@@ -12,6 +12,8 @@ pub struct WasiCtx {
     vfs_preopen_limit: usize,
     vfs_select_index: usize,
     vfs_last_index: usize,
+    #[cfg(feature = "serialize")]
+    pub io_state: serialize::IoState,
     pub exit_code: u32,
 }
 
@@ -28,6 +30,8 @@ impl WasiCtx {
             vfs_preopen_limit: 2,
             vfs_select_index: 2,
             vfs_last_index: 2,
+            #[cfg(feature = "serialize")]
+            io_state: serialize::IoState::Empty,
             exit_code: 0,
         };
 
@@ -292,12 +296,29 @@ mod vfs_test {
 #[cfg(feature = "serialize")]
 pub mod serialize {
     use std::path::PathBuf;
+    use std::time::SystemTime;
 
     use super::common::net::async_tokio::AsyncWasiSocket;
     use super::common::net::{AddressFamily, SocketType, WasiSocketState};
     use super::common::vfs::{self, INode, WASIRights};
     use super::VFD;
     use serde::{Deserialize, Serialize};
+
+    #[derive(Debug, Clone, Deserialize, Serialize)]
+    pub enum IoState {
+        Empty,
+        Accept {
+            bind: String,
+        },
+        Sleep {
+            ddl: SystemTime,
+        },
+        Poll {
+            udp_binds: Vec<String>,
+            tcp_server_binds: Vec<String>,
+            ddl: Option<SystemTime>,
+        },
+    }
 
     #[derive(Debug, Clone, Deserialize, Serialize)]
     pub struct SerialWasiCtx {
@@ -307,6 +328,7 @@ pub mod serialize {
         pub vfs_preopen_limit: usize,
         pub vfs_select_index: usize,
         pub vfs_last_index: usize,
+        pub io_state: IoState,
         pub exit_code: u32,
     }
 
@@ -322,16 +344,14 @@ pub mod serialize {
                 vfs_preopen_limit: ctx.vfs_preopen_limit,
                 vfs_select_index: ctx.vfs_select_index,
                 vfs_last_index: ctx.vfs_last_index,
+                io_state: ctx.io_state.clone(),
                 exit_code: ctx.exit_code,
             }
         }
     }
 
     impl SerialWasiCtx {
-        pub fn resume(
-            self,
-            host_path_map_fn: fn(guest_path: &str) -> PathBuf,
-        ) -> std::io::Result<super::WasiCtx> {
+        pub fn resume_without_fd(self) -> std::io::Result<(super::WasiCtx, Vec<SerialVFD>)> {
             let Self {
                 args,
                 envs,
@@ -339,21 +359,23 @@ pub mod serialize {
                 vfs_preopen_limit,
                 vfs_select_index,
                 vfs_last_index,
+                io_state,
                 exit_code,
             } = self;
-            let mut wasi_vfs = Vec::with_capacity(vfs.len());
-            for f in vfs {
-                wasi_vfs.push(f.into_vfd(host_path_map_fn)?);
-            }
-            Ok(super::WasiCtx {
-                args,
-                envs,
-                vfs: wasi_vfs,
-                vfs_preopen_limit,
-                vfs_select_index,
-                vfs_last_index,
-                exit_code,
-            })
+
+            Ok((
+                super::WasiCtx {
+                    args,
+                    envs,
+                    vfs: vec![],
+                    vfs_preopen_limit,
+                    vfs_select_index,
+                    vfs_last_index,
+                    io_state,
+                    exit_code,
+                },
+                vfs,
+            ))
         }
     }
 
@@ -517,9 +539,9 @@ pub mod serialize {
 
     impl SerialVFD {
         /// `host_path_map_fn` : return a `host_path` that `guest_path` should to map;
-        pub fn into_vfd(
+        pub fn into_vfd<F: Fn(&str) -> PathBuf>(
             self,
-            host_path_map_fn: fn(guest_path: &str) -> PathBuf,
+            host_path_map_fn: &F,
         ) -> std::io::Result<Option<VFD>> {
             let vfd = match self {
                 SerialVFD::Empty => None,

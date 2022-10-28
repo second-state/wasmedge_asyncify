@@ -2018,8 +2018,26 @@ pub fn poll_oneoff<'a, T>(
             let nsubscriptions = *p3 as u32;
             let revents_num_ptr = *p4 as usize;
 
+            let poll_oneoff_fut = p::async_poll::poll_oneoff(
+                ctx,
+                mem,
+                WasmPtr::from(in_ptr),
+                WasmPtr::from(out_ptr),
+                nsubscriptions,
+                WasmPtr::from(revents_num_ptr),
+            );
+
+            let timeout = tokio::time::sleep(std::time::Duration::from_secs(3));
+
+            tokio::select! {
+                r = poll_oneoff_fut =>{return Ok(to_wasm_return(r))}
+                _=timeout=>{}
+            }
+
+            log::info!("[wasi_ctx.io_state] {:?}", ctx.io_state);
+
             Ok(to_wasm_return(
-                p::async_socket::poll_oneoff(
+                p::async_poll::poll_oneoff(
                     ctx,
                     mem,
                     WasmPtr::from(in_ptr),

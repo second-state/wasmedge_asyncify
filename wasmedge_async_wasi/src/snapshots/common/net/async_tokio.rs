@@ -150,6 +150,29 @@ impl AsyncWasiSocket {
 }
 
 impl AsyncWasiSocket {
+    pub fn from_tcplistener(
+        listener: std::net::TcpListener,
+        state: WasiSocketState,
+    ) -> io::Result<Self> {
+        let socket = Socket::from(listener);
+        socket.set_nonblocking(true)?;
+        Ok(Self {
+            inner: AsyncWasiSocketInner::AsyncFd(AsyncFd::new(socket)?),
+            state,
+        })
+    }
+
+    pub fn from_udpsocket(socket: std::net::UdpSocket, state: WasiSocketState) -> io::Result<Self> {
+        let socket = Socket::from(socket);
+        socket.set_nonblocking(true)?;
+        Ok(Self {
+            inner: AsyncWasiSocketInner::AsyncFd(AsyncFd::new(socket)?),
+            state,
+        })
+    }
+}
+
+impl AsyncWasiSocket {
     pub fn open(mut state: WasiSocketState) -> io::Result<Self> {
         use socket2::{Domain, Protocol, Type};
         match state.sock_type.1 {

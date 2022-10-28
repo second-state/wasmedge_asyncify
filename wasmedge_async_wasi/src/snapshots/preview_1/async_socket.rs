@@ -1,8 +1,5 @@
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 
-use net::async_tokio::AsyncWasiSocket;
-use tokio::io::unix::AsyncFdReadyGuard;
-
 use crate::snapshots::common::memory::{Memory, WasmPtr};
 use crate::snapshots::common::net::{self, AddressFamily, SocketType, WasiSocketState};
 use crate::snapshots::common::types::*;
@@ -107,9 +104,29 @@ pub async fn sock_accept<M: Memory>(
     fd: __wasi_fd_t,
     ro_fd_ptr: WasmPtr<__wasi_fd_t>,
 ) -> Result<(), Errno> {
+    #[cfg(feature = "serialize")]
+    {
+        use crate::snapshots::serialize::IoState;
+        if let VFD::AsyncSocket(s) = ctx.get_mut_vfd(fd)? {
+            if !s.state.nonblocking && s.state.local_addr.is_some() {
+                ctx.io_state = IoState::Accept {
+                    bind: s.state.local_addr.unwrap().to_string(),
+                }
+            }
+        } else {
+            return Err(Errno::__WASI_ERRNO_NOTSOCK);
+        }
+    }
+
     let sock_fd = ctx.get_mut_vfd(fd)?;
     if let VFD::AsyncSocket(s) = sock_fd {
-        let cs = s.accept().await?;
+        let cs = s.accept().await;
+        #[cfg(feature = "serialize")]
+        {
+            use crate::snapshots::serialize::IoState;
+            ctx.io_state = IoState::Empty;
+        }
+        let cs = cs?;
         let new_fd = ctx.insert_vfd(env::VFD::AsyncSocket(cs).into())?;
         mem.write_data(ro_fd_ptr, new_fd)?;
         Ok(())
@@ -619,251 +636,6 @@ pub fn sock_setsockopt<M: Memory>(
     } else {
         Err(Errno::__WASI_ERRNO_NOTSOCK)
     }
-}
-
-pub async fn poll_oneoff<M: Memory>(
-    ctx: &mut WasiCtx,
-    mem: &mut M,
-    in_ptr: WasmPtr<__wasi_subscription_t>,
-    out_ptr: WasmPtr<__wasi_event_t>,
-    nsubscriptions: __wasi_size_t,
-    revents_num_ptr: WasmPtr<__wasi_size_t>,
-) -> Result<(), Errno> {
-    use futures::{stream::FuturesUnordered, StreamExt};
-    use net::{PrePoll, SubscriptionFd, SubscriptionFdType};
-
-    fn to_r_event(type_: SubscriptionFdType, errno: Errno) -> __wasi_event_t {
-        let mut r = __wasi_event_t {
-            userdata: 0,
-            error: errno.0,
-            type_: 0,
-            fd_readwrite: __wasi_event_fd_readwrite_t {
-                nbytes: 0,
-                flags: 0,
-            },
-        };
-        match type_ {
-            SubscriptionFdType::Read(userdata) => {
-                r.userdata = userdata;
-                r.type_ = __wasi_eventtype_t::__WASI_EVENTTYPE_FD_READ;
-            }
-            SubscriptionFdType::Write(userdata) => {
-                r.userdata = userdata;
-                r.type_ = __wasi_eventtype_t::__WASI_EVENTTYPE_FD_WRITE;
-            }
-            SubscriptionFdType::Both { read: userdata, .. } => {
-                r.userdata = userdata;
-                r.type_ = __wasi_eventtype_t::__WASI_EVENTTYPE_FD_READ;
-            }
-        }
-        r
-    }
-
-    async fn wait_fd(
-        fd: &AsyncWasiSocket,
-        type_: SubscriptionFdType,
-    ) -> Result<__wasi_event_t, Errno> {
-        let handler = |r: Result<AsyncFdReadyGuard<socket2::Socket>, std::io::Error>,
-                       userdata,
-                       type_| match r {
-            Ok(mut s) => {
-                s.clear_ready();
-                __wasi_event_t {
-                    userdata,
-                    error: 0,
-                    type_,
-                    fd_readwrite: __wasi_event_fd_readwrite_t {
-                        nbytes: 0,
-                        flags: 0,
-                    },
-                }
-            }
-            Err(e) => __wasi_event_t {
-                userdata,
-                error: Errno::from(e).0,
-                type_,
-                fd_readwrite: __wasi_event_fd_readwrite_t {
-                    nbytes: 0,
-                    flags: __wasi_eventrwflags_t::__WASI_EVENTRWFLAGS_FD_READWRITE_HANGUP,
-                },
-            },
-        };
-
-        match type_ {
-            SubscriptionFdType::Write(userdata) => Ok(handler(
-                fd.inner.writable().await,
-                userdata,
-                __wasi_eventtype_t::__WASI_EVENTTYPE_FD_WRITE,
-            )),
-            SubscriptionFdType::Read(userdata) => Ok(handler(
-                fd.inner.readable().await,
-                userdata,
-                __wasi_eventtype_t::__WASI_EVENTTYPE_FD_READ,
-            )),
-            SubscriptionFdType::Both { read, write } => {
-                tokio::select! {
-                    read_result=fd.inner.readable()=>{
-                        Ok(handler(
-                            read_result,
-                            read,
-                            __wasi_eventtype_t::__WASI_EVENTTYPE_FD_READ,
-                        ))
-                    }
-                    write_result=fd.inner.writable()=>{
-                        Ok(handler(
-                            write_result,
-                            write,
-                            __wasi_eventtype_t::__WASI_EVENTTYPE_FD_WRITE,
-                        ))
-                    }
-                }
-            }
-        }
-    }
-
-    if nsubscriptions <= 0 {
-        return Ok(());
-    }
-
-    let nsubscriptions = nsubscriptions as usize;
-
-    let subs = mem.get_slice(in_ptr, nsubscriptions)?;
-    let prepoll = PrePoll::from_wasi_subscription(subs)?;
-
-    match prepoll {
-        PrePoll::OnlyFd(fd_vec) => {
-            if fd_vec.is_empty() {
-                mem.write_data(revents_num_ptr, 0)?;
-            } else {
-                let r_events = mem.mut_slice(out_ptr, nsubscriptions)?;
-                let mut wait = FuturesUnordered::new();
-
-                let mut i = 0;
-
-                for SubscriptionFd { fd, type_ } in fd_vec {
-                    match ctx.get_vfd(fd) {
-                        Ok(VFD::AsyncSocket(s)) => {
-                            wait.push(wait_fd(s, type_));
-                        }
-                        Ok(VFD::Closed) => {
-                            r_events[i] = to_r_event(type_, Errno::__WASI_ERRNO_IO);
-                            i += 1;
-                        }
-                        _ => {
-                            r_events[i] = to_r_event(type_, Errno::__WASI_ERRNO_NOTSOCK);
-                            i += 1;
-                        }
-                    }
-                }
-
-                if i == 0 {
-                    let v = wait.select_next_some().await?;
-                    r_events[i] = v;
-                    i += 1;
-
-                    'wait_poll: loop {
-                        if i >= nsubscriptions {
-                            break 'wait_poll;
-                        }
-                        println!("poll {}", wait.len());
-                        futures::select! {
-                            v = wait.next() => {
-                                if let Some(v) = v {
-                                    r_events[i] = v?;
-                                    i += 1;
-                                } else {
-                                    break 'wait_poll;
-                                }
-                            }
-                            default => {
-                                break 'wait_poll;
-                            }
-                        };
-                    }
-                }
-
-                mem.write_data(revents_num_ptr, i as u32)?;
-            }
-        }
-        PrePoll::ClockAndFd(clock, fd_vec) => {
-            let r_events = mem.mut_slice(out_ptr, nsubscriptions)?;
-            let mut wait = FuturesUnordered::new();
-
-            let mut i = 0;
-
-            for SubscriptionFd { fd, type_ } in fd_vec {
-                match ctx.get_vfd(fd) {
-                    Ok(VFD::AsyncSocket(s)) => {
-                        wait.push(wait_fd(s, type_));
-                    }
-                    Ok(VFD::Closed) => {
-                        r_events[i] = to_r_event(type_, Errno::__WASI_ERRNO_IO);
-                        i += 1;
-                    }
-                    _ => {
-                        r_events[i] = to_r_event(type_, Errno::__WASI_ERRNO_NOTSOCK);
-                        i += 1;
-                    }
-                }
-            }
-
-            if i == 0 {
-                let timeout = clock.timeout.unwrap();
-                let sleep = tokio::time::timeout(timeout, wait.select_next_some()).await;
-                if sleep.is_err() {
-                    let r_event = &mut r_events[0];
-                    r_event.userdata = clock.userdata;
-                    r_event.type_ = __wasi_eventtype_t::__WASI_EVENTTYPE_CLOCK;
-                    mem.write_data(revents_num_ptr, 1)?;
-                    return Ok(());
-                }
-
-                let first = sleep.unwrap()?;
-                r_events[i] = first;
-                i += 1;
-
-                'wait: loop {
-                    if i >= nsubscriptions {
-                        break 'wait;
-                    }
-                    futures::select! {
-                        v = wait.next() => {
-                            if let Some(v) = v {
-                                r_events[i] = v?;
-                                i += 1;
-                            } else {
-                                break 'wait;
-                            }
-                        }
-                        default => {
-                            break 'wait;
-                        }
-                    };
-                }
-            }
-
-            mem.write_data(revents_num_ptr, i as u32)?;
-        }
-        PrePoll::OnlyClock(clock) => {
-            if let Some(e) = clock.err {
-                let r_event = mem.mut_data(out_ptr)?;
-                r_event.userdata = clock.userdata;
-                r_event.type_ = __wasi_eventtype_t::__WASI_EVENTTYPE_CLOCK;
-                r_event.error = Errno::from(e).0;
-                mem.write_data(revents_num_ptr, 1)?;
-                return Ok(());
-            }
-            if let Some(dur) = clock.timeout {
-                tokio::time::sleep(dur).await;
-                let r_event = mem.mut_data(out_ptr)?;
-                r_event.userdata = clock.userdata;
-                r_event.type_ = __wasi_eventtype_t::__WASI_EVENTTYPE_CLOCK;
-                mem.write_data(revents_num_ptr, 1)?;
-                return Ok(());
-            }
-        }
-    }
-    Ok(())
 }
 
 pub async fn sock_lookup_ip<M: Memory>(

@@ -7,6 +7,8 @@ use super::env::{self, AsyncVM};
 use super::WasiCtx;
 
 #[cfg(all(unix, feature = "async_tokio"))]
+pub mod async_poll;
+#[cfg(all(unix, feature = "async_tokio"))]
 pub mod async_socket;
 
 pub fn args_get<M: Memory>(

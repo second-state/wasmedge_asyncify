@@ -6,7 +6,7 @@ pub use super::vfs::*;
 use std::future::Future;
 use std::io::{self, Read, Write};
 use std::net;
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 #[derive(Debug, Clone, Copy)]
 pub enum AddressFamily {
@@ -108,7 +108,7 @@ impl SubscriptionFd {
 
 #[derive(Debug, Clone, Copy)]
 pub struct SubscriptionClock {
-    pub timeout: Option<Duration>,
+    pub timeout: Option<SystemTime>,
     pub userdata: wasi_types::__wasi_userdata_t,
     pub err: Option<Errno>,
 }
@@ -135,13 +135,11 @@ impl Subscription {
                 match clock.id {
                     CLOCKID_REALTIME | CLOCKID_MONOTONIC => {
                         if clock.flags == 1 {
-                            let now = std::time::SystemTime::now();
                             if let Some(ddl) = std::time::UNIX_EPOCH
                                 .checked_add(Duration::from_nanos(clock.timeout + clock.precision))
                             {
-                                let timeout = ddl.duration_since(now).ok();
                                 Ok(Subscription::RealClock(SubscriptionClock {
-                                    timeout,
+                                    timeout: Some(ddl),
                                     userdata,
                                     err: None,
                                 }))
@@ -160,8 +158,11 @@ impl Subscription {
                                     err: None,
                                 }))
                             } else {
-                                let timeout =
-                                    Some(Duration::from_nanos(clock.timeout + clock.precision));
+                                let duration =
+                                    Duration::from_nanos(clock.timeout + clock.precision);
+
+                                let timeout = std::time::SystemTime::now().checked_add(duration);
+
                                 Ok(Subscription::RealClock(SubscriptionClock {
                                     timeout,
                                     userdata,
