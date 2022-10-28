@@ -195,6 +195,9 @@ impl AsyncWasiSocket {
         use socket2::SockAddr;
         let sock_addr = SockAddr::from(addr.clone());
         self.inner.bind(&sock_addr)?;
+        if let SocketType::Datagram = self.state.sock_type.1 {
+            self.inner.register()?;
+        }
         self.state.local_addr.insert(addr);
         Ok(())
     }
