@@ -5,7 +5,7 @@ use crate::core::types::{ValType, WasmVal};
 use crate::error::CoreError;
 use wasmedge_sys_ffi as ffi;
 
-type FnWrapper = unsafe extern "C" fn(
+pub(crate) type FnWrapper = unsafe extern "C" fn(
     key_ptr: *mut c_void,
     data_ptr: *mut c_void,
     calling_frame_ctx: *const ffi::WasmEdge_CallingFrameContext,
@@ -21,11 +21,11 @@ pub(crate) struct Function {
 }
 
 impl Function {
-    pub(crate) fn custom_create<T: Sized>(
+    pub(crate) fn custom_create(
         ty: (Vec<ValType>, Vec<ValType>),
         wrapper_fn: FnWrapper,
         real_fn: *mut c_void,
-        data: *mut T,
+        data: *mut c_void,
     ) -> Option<Self> {
         unsafe {
             let ty = FuncType::create(ty.0, ty.1)?;

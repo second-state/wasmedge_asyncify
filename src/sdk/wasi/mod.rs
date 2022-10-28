@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use crate::error::{CoreError, CoreExecutionError};
 use crate::module::ResultFuture;
 use crate::types::{ValType, WasmVal};
-use crate::{module, types, ImportModule, Memory};
+use crate::{types, ImportModule, Memory};
 use wasmedge_async_wasi::snapshots::common::memory::WasmPtr;
 use wasmedge_async_wasi::snapshots::env::Errno;
 use wasmedge_async_wasi::snapshots::preview_1 as p;
@@ -685,8 +685,8 @@ impl AsyncWasiImport {
     }
 }
 
-pub fn args_get<'a>(
-    _inst: &'a mut module::AsyncInstanceRef,
+pub fn args_get<'a, T>(
+    _: &'a mut T,
     mem: &'a mut Memory,
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
@@ -707,8 +707,8 @@ pub fn args_get<'a>(
     }
 }
 
-pub fn args_sizes_get<'a>(
-    _inst: &'a mut module::AsyncInstanceRef,
+pub fn args_sizes_get<'a, T>(
+    _: &'a mut T,
     mem: &'a mut Memory,
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
@@ -728,8 +728,8 @@ pub fn args_sizes_get<'a>(
     }
 }
 
-pub fn environ_get<'a>(
-    _inst: &'a mut module::AsyncInstanceRef,
+pub fn environ_get<'a, T>(
+    _: &'a mut T,
     mem: &'a mut Memory,
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
@@ -749,8 +749,8 @@ pub fn environ_get<'a>(
     }
 }
 
-pub fn environ_sizes_get<'a>(
-    _inst: &'a mut module::AsyncInstanceRef,
+pub fn environ_sizes_get<'a, T>(
+    _: &'a mut T,
     mem: &'a mut Memory,
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
@@ -770,8 +770,8 @@ pub fn environ_sizes_get<'a>(
     }
 }
 
-pub fn clock_res_get<'a>(
-    _inst: &'a mut module::AsyncInstanceRef,
+pub fn clock_res_get<'a, T>(
+    _: &'a mut T,
     mem: &'a mut Memory,
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
@@ -791,8 +791,8 @@ pub fn clock_res_get<'a>(
     }
 }
 
-pub fn clock_time_get<'a>(
-    _inst: &'a mut module::AsyncInstanceRef,
+pub fn clock_time_get<'a, T>(
+    _: &'a mut T,
     mem: &'a mut Memory,
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
@@ -815,8 +815,8 @@ pub fn clock_time_get<'a>(
     }
 }
 
-pub fn random_get<'a>(
-    _inst: &'a mut module::AsyncInstanceRef,
+pub fn random_get<'a, T>(
+    _: &'a mut T,
     mem: &'a mut Memory,
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
@@ -837,8 +837,8 @@ pub fn random_get<'a>(
     }
 }
 
-pub fn fd_prestat_get<'a>(
-    _inst: &'a mut module::AsyncInstanceRef,
+pub fn fd_prestat_get<'a, T>(
+    _: &'a mut T,
     mem: &'a mut Memory,
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
@@ -859,8 +859,8 @@ pub fn fd_prestat_get<'a>(
     }
 }
 
-pub fn fd_prestat_dir_name<'a>(
-    _inst: &'a mut module::AsyncInstanceRef,
+pub fn fd_prestat_dir_name<'a, T>(
+    _: &'a mut T,
     mem: &'a mut Memory,
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
@@ -883,8 +883,8 @@ pub fn fd_prestat_dir_name<'a>(
     }
 }
 
-pub fn fd_renumber<'a>(
-    _inst: &'a mut module::AsyncInstanceRef,
+pub fn fd_renumber<'a, T>(
+    _: &'a mut T,
     mem: &'a mut Memory,
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
@@ -900,8 +900,8 @@ pub fn fd_renumber<'a>(
     }
 }
 
-pub fn fd_advise<'a>(
-    _inst: &'a mut module::AsyncInstanceRef,
+pub fn fd_advise<'a, T>(
+    _: &'a mut T,
     mem: &'a mut Memory,
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
@@ -923,8 +923,8 @@ pub fn fd_advise<'a>(
     }
 }
 
-pub fn fd_allocate<'a>(
-    _inst: &'a mut module::AsyncInstanceRef,
+pub fn fd_allocate<'a, T>(
+    _: &'a mut T,
     mem: &'a mut Memory,
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
@@ -941,8 +941,8 @@ pub fn fd_allocate<'a>(
     }
 }
 
-pub fn fd_close<'a>(
-    _inst: &'a mut module::AsyncInstanceRef,
+pub fn fd_close<'a, T>(
+    _: &'a mut T,
     mem: &'a mut Memory,
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
@@ -957,8 +957,8 @@ pub fn fd_close<'a>(
     }
 }
 
-pub fn fd_seek<'a>(
-    _inst: &'a mut module::AsyncInstanceRef,
+pub fn fd_seek<'a, T>(
+    _: &'a mut T,
     mem: &'a mut Memory,
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
@@ -986,8 +986,8 @@ pub fn fd_seek<'a>(
     }
 }
 
-pub fn fd_sync<'a>(
-    _inst: &'a mut module::AsyncInstanceRef,
+pub fn fd_sync<'a, T>(
+    _: &'a mut T,
     mem: &'a mut Memory,
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
@@ -1002,8 +1002,8 @@ pub fn fd_sync<'a>(
     }
 }
 
-pub fn fd_datasync<'a>(
-    _inst: &'a mut module::AsyncInstanceRef,
+pub fn fd_datasync<'a, T>(
+    _: &'a mut T,
     mem: &'a mut Memory,
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
@@ -1018,8 +1018,8 @@ pub fn fd_datasync<'a>(
     }
 }
 
-pub fn fd_tell<'a>(
-    _inst: &'a mut module::AsyncInstanceRef,
+pub fn fd_tell<'a, T>(
+    _: &'a mut T,
     mem: &'a mut Memory,
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
@@ -1040,8 +1040,8 @@ pub fn fd_tell<'a>(
     }
 }
 
-pub fn fd_fdstat_get<'a>(
-    _inst: &'a mut module::AsyncInstanceRef,
+pub fn fd_fdstat_get<'a, T>(
+    _: &'a mut T,
     mem: &'a mut Memory,
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
@@ -1063,8 +1063,8 @@ pub fn fd_fdstat_get<'a>(
     }
 }
 
-pub fn fd_fdstat_set_flags<'a>(
-    _inst: &'a mut module::AsyncInstanceRef,
+pub fn fd_fdstat_set_flags<'a, T>(
+    _: &'a mut T,
     mem: &'a mut Memory,
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
@@ -1081,8 +1081,8 @@ pub fn fd_fdstat_set_flags<'a>(
     }
 }
 
-pub fn fd_fdstat_set_rights<'a>(
-    _inst: &'a mut module::AsyncInstanceRef,
+pub fn fd_fdstat_set_rights<'a, T>(
+    _: &'a mut T,
     mem: &'a mut Memory,
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
@@ -1106,8 +1106,8 @@ pub fn fd_fdstat_set_rights<'a>(
     }
 }
 
-pub fn fd_filestat_get<'a>(
-    _inst: &'a mut module::AsyncInstanceRef,
+pub fn fd_filestat_get<'a, T>(
+    _: &'a mut T,
     mem: &'a mut Memory,
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
@@ -1129,8 +1129,8 @@ pub fn fd_filestat_get<'a>(
     }
 }
 
-pub fn fd_filestat_set_size<'a>(
-    _inst: &'a mut module::AsyncInstanceRef,
+pub fn fd_filestat_set_size<'a, T>(
+    _: &'a mut T,
     mem: &'a mut Memory,
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
@@ -1152,8 +1152,8 @@ pub fn fd_filestat_set_size<'a>(
     }
 }
 
-pub fn fd_filestat_set_times<'a>(
-    _inst: &'a mut module::AsyncInstanceRef,
+pub fn fd_filestat_set_times<'a, T>(
+    _: &'a mut T,
     mem: &'a mut Memory,
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
@@ -1176,8 +1176,8 @@ pub fn fd_filestat_set_times<'a>(
     }
 }
 
-pub fn fd_read<'a>(
-    _inst: &'a mut module::AsyncInstanceRef,
+pub fn fd_read<'a, T>(
+    _: &'a mut T,
     mem: &'a mut Memory,
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
@@ -1205,8 +1205,8 @@ pub fn fd_read<'a>(
     }
 }
 
-pub fn fd_pread<'a>(
-    _inst: &'a mut module::AsyncInstanceRef,
+pub fn fd_pread<'a, T>(
+    _: &'a mut T,
     mem: &'a mut Memory,
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
@@ -1237,8 +1237,8 @@ pub fn fd_pread<'a>(
     }
 }
 
-pub fn fd_write<'a>(
-    _inst: &'a mut module::AsyncInstanceRef,
+pub fn fd_write<'a, T>(
+    _: &'a mut T,
     mem: &'a mut Memory,
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
@@ -1266,8 +1266,8 @@ pub fn fd_write<'a>(
     }
 }
 
-pub fn fd_pwrite<'a>(
-    _inst: &'a mut module::AsyncInstanceRef,
+pub fn fd_pwrite<'a, T>(
+    _: &'a mut T,
     mem: &'a mut Memory,
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
@@ -1298,8 +1298,8 @@ pub fn fd_pwrite<'a>(
     }
 }
 
-pub fn fd_readdir<'a>(
-    _inst: &'a mut module::AsyncInstanceRef,
+pub fn fd_readdir<'a, T>(
+    _: &'a mut T,
     mem: &'a mut Memory,
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
@@ -1330,8 +1330,8 @@ pub fn fd_readdir<'a>(
     }
 }
 
-pub fn path_create_directory<'a>(
-    _inst: &'a mut module::AsyncInstanceRef,
+pub fn path_create_directory<'a, T>(
+    _: &'a mut T,
     mem: &'a mut Memory,
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
@@ -1355,8 +1355,8 @@ pub fn path_create_directory<'a>(
     }
 }
 
-pub fn path_filestat_get<'a>(
-    _inst: &'a mut module::AsyncInstanceRef,
+pub fn path_filestat_get<'a, T>(
+    _: &'a mut T,
     mem: &'a mut Memory,
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
@@ -1387,8 +1387,8 @@ pub fn path_filestat_get<'a>(
     }
 }
 
-pub fn path_filestat_set_times<'a>(
-    _inst: &'a mut module::AsyncInstanceRef,
+pub fn path_filestat_set_times<'a, T>(
+    _: &'a mut T,
     _mem: &'a mut Memory,
     _ctx: &'a mut WasiCtx,
     _args: Vec<types::WasmVal>,
@@ -1397,8 +1397,8 @@ pub fn path_filestat_set_times<'a>(
     Ok(vec![WasmVal::I32(Errno::__WASI_ERRNO_NOSYS.0 as i32)])
 }
 
-pub fn path_link<'a>(
-    _inst: &'a mut module::AsyncInstanceRef,
+pub fn path_link<'a, T>(
+    _: &'a mut T,
     _mem: &'a mut Memory,
     _ctx: &'a mut WasiCtx,
     _args: Vec<types::WasmVal>,
@@ -1407,8 +1407,8 @@ pub fn path_link<'a>(
     Ok(vec![WasmVal::I32(Errno::__WASI_ERRNO_NOSYS.0 as i32)])
 }
 
-pub fn path_open<'a>(
-    _inst: &'a mut module::AsyncInstanceRef,
+pub fn path_open<'a, T>(
+    _: &'a mut T,
     mem: &'a mut Memory,
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
@@ -1447,8 +1447,8 @@ pub fn path_open<'a>(
     }
 }
 
-pub fn path_readlink<'a>(
-    _inst: &'a mut module::AsyncInstanceRef,
+pub fn path_readlink<'a, T>(
+    _: &'a mut T,
     _mem: &'a mut Memory,
     _ctx: &'a mut WasiCtx,
     _args: Vec<types::WasmVal>,
@@ -1457,8 +1457,8 @@ pub fn path_readlink<'a>(
     Ok(vec![WasmVal::I32(Errno::__WASI_ERRNO_NOSYS.0 as i32)])
 }
 
-pub fn path_remove_directory<'a>(
-    _inst: &'a mut module::AsyncInstanceRef,
+pub fn path_remove_directory<'a, T>(
+    _: &'a mut T,
     mem: &'a mut Memory,
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
@@ -1482,8 +1482,8 @@ pub fn path_remove_directory<'a>(
     }
 }
 
-pub fn path_rename<'a>(
-    _inst: &'a mut module::AsyncInstanceRef,
+pub fn path_rename<'a, T>(
+    _: &'a mut T,
     mem: &'a mut Memory,
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
@@ -1516,8 +1516,8 @@ pub fn path_rename<'a>(
     }
 }
 
-pub fn path_symlink<'a>(
-    _inst: &'a mut module::AsyncInstanceRef,
+pub fn path_symlink<'a, T>(
+    _: &'a mut T,
     _mem: &'a mut Memory,
     _ctx: &'a mut WasiCtx,
     _args: Vec<types::WasmVal>,
@@ -1526,8 +1526,8 @@ pub fn path_symlink<'a>(
     Ok(vec![WasmVal::I32(Errno::__WASI_ERRNO_NOSYS.0 as i32)])
 }
 
-pub fn path_unlink_file<'a>(
-    _inst: &'a mut module::AsyncInstanceRef,
+pub fn path_unlink_file<'a, T>(
+    _: &'a mut T,
     mem: &'a mut Memory,
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
@@ -1551,8 +1551,8 @@ pub fn path_unlink_file<'a>(
     }
 }
 
-pub fn proc_exit<'a>(
-    _inst: &'a mut module::AsyncInstanceRef,
+pub fn proc_exit<'a, T>(
+    _: &'a mut T,
     mem: &'a mut Memory,
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
@@ -1568,8 +1568,8 @@ pub fn proc_exit<'a>(
     }
 }
 
-pub fn proc_raise<'a>(
-    _inst: &'a mut module::AsyncInstanceRef,
+pub fn proc_raise<'a, T>(
+    _: &'a mut T,
     _mem: &'a mut Memory,
     _ctx: &'a mut WasiCtx,
     _args: Vec<types::WasmVal>,
@@ -1579,8 +1579,8 @@ pub fn proc_raise<'a>(
 }
 
 // todo: ld asyncify yield
-pub fn sched_yield<'a>(
-    _inst: &'a mut module::AsyncInstanceRef,
+pub fn sched_yield<'a, T>(
+    _: &'a mut T,
     _mem: &'a mut Memory,
     _ctx: &'a mut WasiCtx,
     _args: Vec<types::WasmVal>,
@@ -1591,8 +1591,8 @@ pub fn sched_yield<'a>(
 
 //socket
 
-pub fn sock_open<'a>(
-    _inst: &'a mut module::AsyncInstanceRef,
+pub fn sock_open<'a, T>(
+    _: &'a mut T,
     mem: &'a mut Memory,
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
@@ -1616,8 +1616,8 @@ pub fn sock_open<'a>(
     }
 }
 
-pub fn sock_bind<'a>(
-    _inst: &'a mut module::AsyncInstanceRef,
+pub fn sock_bind<'a, T>(
+    _: &'a mut T,
     mem: &'a mut Memory,
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
@@ -1640,8 +1640,8 @@ pub fn sock_bind<'a>(
     }
 }
 
-pub fn sock_listen<'a>(
-    _inst: &'a mut module::AsyncInstanceRef,
+pub fn sock_listen<'a, T>(
+    _: &'a mut T,
     mem: &'a mut Memory,
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
@@ -1660,8 +1660,8 @@ pub fn sock_listen<'a>(
     }
 }
 
-pub fn sock_accept<'a>(
-    _inst: &'a mut module::AsyncInstanceRef,
+pub fn sock_accept<'a, T>(
+    _: &'a mut T,
     mem: &'a mut Memory,
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
@@ -1681,8 +1681,8 @@ pub fn sock_accept<'a>(
     })
 }
 
-pub fn sock_connect<'a>(
-    _inst: &'a mut module::AsyncInstanceRef,
+pub fn sock_connect<'a, T>(
+    _: &'a mut T,
     mem: &'a mut Memory,
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
@@ -1704,8 +1704,8 @@ pub fn sock_connect<'a>(
     })
 }
 
-pub fn sock_recv<'a>(
-    _inst: &'a mut module::AsyncInstanceRef,
+pub fn sock_recv<'a, T>(
+    _: &'a mut T,
     mem: &'a mut Memory,
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
@@ -1743,8 +1743,8 @@ pub fn sock_recv<'a>(
     })
 }
 
-pub fn sock_recv_from<'a>(
-    _inst: &'a mut module::AsyncInstanceRef,
+pub fn sock_recv_from<'a, T>(
+    _: &'a mut T,
     mem: &'a mut Memory,
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
@@ -1786,8 +1786,8 @@ pub fn sock_recv_from<'a>(
     })
 }
 
-pub fn sock_send<'a>(
-    _inst: &'a mut module::AsyncInstanceRef,
+pub fn sock_send<'a, T>(
+    _: &'a mut T,
     mem: &'a mut Memory,
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
@@ -1823,8 +1823,8 @@ pub fn sock_send<'a>(
     })
 }
 
-pub fn sock_send_to<'a>(
-    _inst: &'a mut module::AsyncInstanceRef,
+pub fn sock_send_to<'a, T>(
+    _: &'a mut T,
     mem: &'a mut Memory,
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
@@ -1864,8 +1864,8 @@ pub fn sock_send_to<'a>(
     })
 }
 
-pub fn sock_shutdown<'a>(
-    _inst: &'a mut module::AsyncInstanceRef,
+pub fn sock_shutdown<'a, T>(
+    _: &'a mut T,
     mem: &'a mut Memory,
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
@@ -1883,8 +1883,8 @@ pub fn sock_shutdown<'a>(
     }
 }
 
-pub fn sock_getpeeraddr<'a>(
-    _inst: &'a mut module::AsyncInstanceRef,
+pub fn sock_getpeeraddr<'a, T>(
+    _: &'a mut T,
     mem: &'a mut Memory,
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
@@ -1911,8 +1911,8 @@ pub fn sock_getpeeraddr<'a>(
     }
 }
 
-pub fn sock_getlocaladdr<'a>(
-    _inst: &'a mut module::AsyncInstanceRef,
+pub fn sock_getlocaladdr<'a, T>(
+    _: &'a mut T,
     mem: &'a mut Memory,
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
@@ -1939,8 +1939,8 @@ pub fn sock_getlocaladdr<'a>(
     }
 }
 
-pub fn sock_getsockopt<'a>(
-    _inst: &'a mut module::AsyncInstanceRef,
+pub fn sock_getsockopt<'a, T>(
+    _: &'a mut T,
     mem: &'a mut Memory,
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
@@ -1970,8 +1970,8 @@ pub fn sock_getsockopt<'a>(
     }
 }
 
-pub fn sock_setsockopt<'a>(
-    _inst: &'a mut module::AsyncInstanceRef,
+pub fn sock_setsockopt<'a, T>(
+    _: &'a mut T,
     mem: &'a mut Memory,
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
@@ -2001,8 +2001,8 @@ pub fn sock_setsockopt<'a>(
     }
 }
 
-pub fn poll_oneoff<'a>(
-    _inst: &'a mut module::AsyncInstanceRef,
+pub fn poll_oneoff<'a, T>(
+    _: &'a mut T,
     mem: &'a mut Memory,
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,
@@ -2035,8 +2035,8 @@ pub fn poll_oneoff<'a>(
     })
 }
 
-pub fn sock_lookup_ip<'a>(
-    _inst: &'a mut module::AsyncInstanceRef,
+pub fn sock_lookup_ip<'a, T>(
+    _: &'a mut T,
     mem: &'a mut Memory,
     ctx: &'a mut WasiCtx,
     args: Vec<types::WasmVal>,

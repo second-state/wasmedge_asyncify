@@ -6,7 +6,7 @@ use std::{
 use crate::{
     core::{
         executor::{Executor, InnerExecutor},
-        instance::function::{FuncRef, Function},
+        instance::function::{FnWrapper, FuncRef, Function},
         AsInnerInstance, AsInstance, AstModule, ImportModule, InnerInstance,
     },
     error::{CoreError, InstanceError},
@@ -178,12 +178,6 @@ impl Future for CallFuture<'_> {
             fut_store,
         } = self.as_mut().get_mut();
         let waker = cx.waker();
-
-        // if let Some(fut) = fut_store {
-        //     if Future::poll(fut.as_mut(), cx).is_pending() {
-        //         return Poll::Pending;
-        //     }
-        // }
 
         if let Err(_) = inst.asyncify_resume() {
             return Poll::Ready(Err(CoreError::Asyncify));
@@ -391,28 +385,35 @@ pub(crate) unsafe extern "C" fn wrapper_sync_fn<T: Sized + Send>(
 }
 
 impl<T: Send + Sized> ImportModule<T> {
+    pub unsafe fn add_custom_func(
+        &mut self,
+        name: &str,
+        ty: (Vec<ValType>, Vec<ValType>),
+        wrapper_fn: FnWrapper,
+        real_fn: *mut c_void,
+        data: *mut T,
+    ) -> Result<(), AddFuncError> {
+        let func_name = WasmEdgeString::new(name)?;
+        let func = Function::custom_create(ty, wrapper_fn, real_fn, data.cast())
+            .ok_or(AddFuncError::FunctionCreate)?;
+
+        ffi::WasmEdge_ModuleInstanceAddFunction(
+            self.inner.0,
+            func_name.as_raw(),
+            func.inner.0 as *mut _,
+        );
+        Ok(())
+    }
+
     pub fn add_async_func(
         &mut self,
         name: &str,
         ty: (Vec<ValType>, Vec<ValType>),
         real_fn: AsyncWasmFn<T>,
     ) -> Result<(), AddFuncError> {
-        let func_name = WasmEdgeString::new(name)?;
         unsafe {
-            let func = Function::custom_create(
-                ty,
-                wrapper_async_fn::<T>,
-                real_fn as *mut _,
-                self.data.as_mut(),
-            )
-            .ok_or(AddFuncError::FunctionCreate)?;
-
-            ffi::WasmEdge_ModuleInstanceAddFunction(
-                self.inner.0,
-                func_name.as_raw(),
-                func.inner.0 as *mut _,
-            );
-            Ok(())
+            let data_ptr = self.data.as_mut() as *mut T;
+            self.add_custom_func(name, ty, wrapper_async_fn::<T>, real_fn as *mut _, data_ptr)
         }
     }
 
@@ -422,22 +423,9 @@ impl<T: Send + Sized> ImportModule<T> {
         ty: (Vec<ValType>, Vec<ValType>),
         real_fn: SyncWasmFn<T>,
     ) -> Result<(), AddFuncError> {
-        let func_name = WasmEdgeString::new(name)?;
         unsafe {
-            let func = Function::custom_create(
-                ty,
-                wrapper_sync_fn::<T>,
-                real_fn as *mut _,
-                self.data.as_mut(),
-            )
-            .ok_or(AddFuncError::FunctionCreate)?;
-
-            ffi::WasmEdge_ModuleInstanceAddFunction(
-                self.inner.0,
-                func_name.as_raw(),
-                func.inner.0 as *mut _,
-            );
-            Ok(())
+            let data_ptr = self.data.as_mut() as *mut T;
+            self.add_custom_func(name, ty, wrapper_sync_fn::<T>, real_fn as *mut _, data_ptr)
         }
     }
 }
