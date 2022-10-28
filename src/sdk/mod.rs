@@ -1,7 +1,7 @@
 #[cfg(feature = "aot")]
 mod aot;
 
-mod instance;
+pub mod instance;
 pub mod wasi;
 
 pub use instance::module;
