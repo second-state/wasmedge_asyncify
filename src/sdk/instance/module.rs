@@ -9,7 +9,7 @@ use crate::{
         instance::function::{FnWrapper, FuncRef, Function},
         AsInnerInstance, AsInstance, AstModule, ImportModule, InnerInstance,
     },
-    error::{CoreError, InstanceError},
+    error::{CoreCommonError, CoreError, InstanceError},
     types::{ValType, WasmEdgeString, WasmVal},
     Memory,
 };
@@ -48,6 +48,7 @@ impl<'a> AsyncInstance<'a> {
 
     #[allow(dead_code)]
     fn asyncify_yield(&mut self) -> Result<(), CallError> {
+        log::trace!("asyncify_yield");
         let f = self.inner.get_func("asyncify_start_unwind")?;
         f.call(&self.executor, &[])?;
         Ok(())
@@ -55,20 +56,26 @@ impl<'a> AsyncInstance<'a> {
 
     #[allow(dead_code)]
     fn asyncify_normal(&mut self) -> Result<(), CallError> {
+        log::trace!("asyncify_normal");
+
         let f = self.inner.get_func("asyncify_stop_unwind")?;
         self.executor.run_func_ref(&f, &[])?;
         Ok(())
     }
 
     fn asyncify_resume(&mut self) -> Result<(), CallError> {
-        if !self.asyncify_done()? {
+        log::trace!("asyncify_resume");
+
+        if !self.asyncify_is_normal()? {
+            log::trace!("call asyncify_resume");
+
             let f = self.inner.get_func("asyncify_start_rewind")?;
             self.executor.run_func_ref(&f, &[])?;
         }
         Ok(())
     }
 
-    pub(crate) fn asyncify_done(&mut self) -> Result<bool, CallError> {
+    pub(crate) fn asyncify_is_normal(&mut self) -> Result<bool, CallError> {
         let f = self.inner.get_func("asyncify_get_state")?;
         let r = self.executor.run_func_ref(&f, &[])?;
 
@@ -78,18 +85,27 @@ impl<'a> AsyncInstance<'a> {
         return Ok(true);
     }
 
-    pub fn call(
-        &'a mut self,
+    pub async fn call<'r>(
+        &'r mut self,
         name: &str,
         args: Vec<WasmVal>,
-    ) -> Result<CallFuture<'a>, InstanceError> {
-        let fun_ref = self.inner.get_func(name)?;
-        Ok(CallFuture {
-            inst: self,
+    ) -> Result<Vec<WasmVal>, CoreError>
+    where
+        'a: 'r,
+    {
+        let fun_ref = self
+            .inner
+            .get_func(name)
+            .map_err(|_| CoreError::Common(CoreCommonError::FuncNotFound))?;
+        let inst = self;
+        let f = CallFuture::<'r, 'a> {
+            inst,
             fun_ref,
             args,
             fut_store: None,
-        })
+        }
+        .await;
+        f
     }
 
     pub fn unpack(self) -> Executor {
@@ -105,6 +121,8 @@ pub struct AsyncInstanceRef {
 
 impl AsyncInstanceRef {
     fn asyncify_yield(&mut self) -> Result<(), CoreError> {
+        log::trace!("asyncify_yield");
+
         let f = self
             .inner
             .get_func("asyncify_start_unwind")
@@ -114,6 +132,8 @@ impl AsyncInstanceRef {
     }
 
     fn asyncify_normal(&mut self) -> Result<(), CoreError> {
+        log::trace!("asyncify_normal");
+
         let f = self
             .inner
             .get_func("asyncify_stop_unwind")
@@ -124,7 +144,11 @@ impl AsyncInstanceRef {
 
     #[allow(dead_code)]
     fn asyncify_resume(&mut self) -> Result<(), CoreError> {
+        log::trace!("asyncify_resume");
+
         if !self.asyncify_is_normal()? {
+            log::trace!("call asyncify_resume");
+
             let f = self
                 .inner
                 .get_func("asyncify_start_rewind")
@@ -156,15 +180,20 @@ impl AsInnerInstance for AsyncInstanceRef {
 
 scoped_tls::scoped_thread_local!(static FUT_STORE_RAW_PTR:(Waker,*const c_void));
 
-pub struct CallFuture<'a> {
-    inst: &'a mut AsyncInstance<'a>,
+enum FutureReady<'r> {
+    Wait(Pin<ResultFuture<'r>>),
+    Yield,
+}
+
+pub struct CallFuture<'r, 'inst: 'r> {
+    inst: &'r mut AsyncInstance<'inst>,
     pub(crate) fun_ref: FuncRef,
     pub(crate) args: Vec<WasmVal>,
-    fut_store: Option<Pin<ResultFuture<'a>>>,
+    fut_store: Option<FutureReady<'r>>,
 }
 
 use std::future::Future;
-impl Future for CallFuture<'_> {
+impl<'r, 'inst: 'r> Future for CallFuture<'r, 'inst> {
     type Output = Result<Vec<WasmVal>, CoreError>;
 
     fn poll(
@@ -185,15 +214,15 @@ impl Future for CallFuture<'_> {
 
         let s = (
             waker.clone(),
-            (fut_store as *const Option<Pin<ResultFuture>>).cast(),
+            (fut_store as *const Option<FutureReady>).cast(),
         );
 
         let r = FUT_STORE_RAW_PTR.set(&s, || inst.executor.run_func_ref(&fun_ref, args));
         match r {
-            Ok(v) => match inst.asyncify_done() {
-                Ok(true) => Poll::Ready(Ok(v)),
-                Ok(false) => Poll::Pending,
-                Err(_) => Poll::Ready(Err(CoreError::Asyncify)),
+            Ok(v) => match fut_store {
+                Some(FutureReady::Wait(_)) => Poll::Pending,
+                Some(FutureReady::Yield) => Poll::Ready(Err(CoreError::Yield)),
+                None => Poll::Ready(Ok(v)),
             },
             Err(e) => Poll::Ready(Err(e)),
         }
@@ -254,7 +283,7 @@ pub(crate) unsafe extern "C" fn wrapper_async_fn<T: Sized + Send>(
         let (w, ptr) = FUT_STORE_RAW_PTR.with(|(w, ptr)| {
             (
                 w.clone(),
-                (*ptr as *mut Option<Pin<ResultFuture>>).as_mut().unwrap(),
+                (*ptr as *mut Option<FutureReady>).as_mut().unwrap(),
             )
         });
         let mut cx = Context::from_waker(&w);
@@ -265,50 +294,59 @@ pub(crate) unsafe extern "C" fn wrapper_async_fn<T: Sized + Send>(
 
         let fut_is_ready;
         let r = {
-            let fut = if inst.asyncify_is_normal()? {
-                let real_fn: for<'a> fn(
-                    &'a mut AsyncInstanceRef,
-                    &mut Memory,
-                    &mut T,
-                    Vec<WasmVal>,
-                ) -> ResultFuture<'a> = std::mem::transmute(key_ptr);
+            log::trace!("take fut");
+            let mut fut = match ptr.take() {
+                Some(FutureReady::Wait(fut)) => fut,
+                Some(FutureReady::Yield) => unreachable!(),
+                None => {
+                    log::trace!("create fut");
+                    let real_fn: for<'a> fn(
+                        &'a mut AsyncInstanceRef,
+                        &mut Memory,
+                        &mut T,
+                        Vec<WasmVal>,
+                    ) -> ResultFuture<'a> = std::mem::transmute(key_ptr);
 
-                let input = {
-                    let raw_input = std::slice::from_raw_parts(params, param_len as usize);
-                    raw_input
-                        .iter()
-                        .map(|r| (*r).into())
-                        .collect::<Vec<WasmVal>>()
-                };
+                    let input = {
+                        let raw_input = std::slice::from_raw_parts(params, param_len as usize);
+                        raw_input
+                            .iter()
+                            .map(|r| (*r).into())
+                            .collect::<Vec<WasmVal>>()
+                    };
 
-                Some(Pin::from(real_fn(&mut inst, &mut mem, data_ptr, input)))
-            } else {
-                ptr.take()
+                    Pin::from(real_fn(&mut inst, &mut mem, data_ptr, input))
+                }
             };
-
-            debug_assert!(fut.is_some());
-            let mut fut = fut.unwrap();
 
             let return_len = return_len as usize;
             let raw_returns = std::slice::from_raw_parts_mut(returns, return_len);
 
             match Future::poll(fut.as_mut(), &mut cx) {
-                std::task::Poll::Ready(result) => {
-                    fut_is_ready = true;
-                    match result {
-                        Ok(v) => {
-                            debug_assert!(v.len() == return_len);
-                            for (idx, item) in v.into_iter().enumerate() {
-                                raw_returns[idx] = item.into();
-                            }
-                            Ok(())
+                std::task::Poll::Ready(result) => match result {
+                    Ok(v) => {
+                        fut_is_ready = true;
+
+                        debug_assert!(v.len() == return_len);
+                        for (idx, item) in v.into_iter().enumerate() {
+                            raw_returns[idx] = item.into();
                         }
-                        Err(e) => Err(e),
+                        Ok(())
                     }
-                }
+                    Err(e) => {
+                        if let CoreError::Yield = e {
+                            fut_is_ready = false;
+                            let _ = ptr.insert(FutureReady::Yield);
+                            Ok(())
+                        } else {
+                            fut_is_ready = true;
+                            Err(e)
+                        }
+                    }
+                },
                 std::task::Poll::Pending => {
                     fut_is_ready = false;
-                    let _ = ptr.insert(fut);
+                    let _ = ptr.insert(FutureReady::Wait(fut));
                     Ok(())
                 }
             }

@@ -1,7 +1,7 @@
 use std::future::Future;
 use std::path::Path;
 
-use wasmedge_asyncify::{module::AsyncInstance, store::Store, *};
+use wasmedge_asyncify::{module::AsyncInstance, store::Store, wasi::IoState, *};
 
 fn main() {
     simple_log::quick!("trace");
@@ -43,6 +43,16 @@ async fn run_wasi_test(name: &str) {
     let mut wasi_import = wasmedge_asyncify::wasi::AsyncWasiImport::new().unwrap();
     wasi_import.push_arg(name.to_string());
     wasi_import.push_env("RUST_LOG", "info");
+
+    fn hook(io_state: &IoState) -> bool {
+        log::info!("hook! {:?}", io_state);
+        match io_state {
+            IoState::Sleep { .. } => true,
+            _ => false,
+        }
+    }
+    wasi_import.data.yield_hook = Some((std::time::Duration::from_secs(3), hook));
+
     wasi_import
         .push_preopen(".".parse().unwrap(), ".".parse().unwrap())
         .unwrap();
@@ -73,5 +83,15 @@ async fn run_wasi_test(name: &str) {
 
     // call _start function
     log::info!("call _start");
-    inst.call("_start", vec![]).unwrap().await.unwrap();
+
+    let r = inst.call("_start", vec![]).await;
+    if let Err(e) = &r {
+        if e.is_yield() {
+            log::info!("yield!");
+        } else {
+            Err(e.clone()).unwrap()
+        }
+    }
+    log::info!("resume!");
+    let r = inst.call("_start", vec![]).await.unwrap();
 }

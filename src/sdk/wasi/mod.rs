@@ -12,9 +12,19 @@ use wasmedge_async_wasi::snapshots::WasiCtx;
 
 mod memory;
 
-pub struct AsyncWasiImport(ImportModule<WasiCtx>);
+pub use wasmedge_async_wasi::snapshots::serialize::IoState;
+
+pub struct AsyncWasiCtx {
+    pub wasi_ctx: WasiCtx,
+    /// (timeout,yield_hook):
+    ///
+    /// When `yield_hook` is not `None`, `accept()` and `poll_oneoff()` will wait a `Duration` (yield_hook.0),
+    /// if (yield_hook.1) return true, runtime will yield.
+    pub yield_hook: Option<(std::time::Duration, fn(&IoState) -> bool)>,
+}
+pub struct AsyncWasiImport(ImportModule<AsyncWasiCtx>);
 impl Deref for AsyncWasiImport {
-    type Target = ImportModule<WasiCtx>;
+    type Target = ImportModule<AsyncWasiCtx>;
     fn deref(&self) -> &Self::Target {
         &self.0
     }
@@ -41,7 +51,10 @@ pub struct NotDirError;
 
 impl AsyncWasiImport {
     pub fn new() -> Option<Self> {
-        let wasi_ctx = WasiCtx::new();
+        let wasi_ctx = AsyncWasiCtx {
+            wasi_ctx: WasiCtx::new(),
+            yield_hook: None,
+        };
         let mut module = ImportModule::create("wasi_snapshot_preview1", wasi_ctx).ok()?;
         module
             .add_sync_func(
@@ -672,23 +685,24 @@ impl AsyncWasiImport {
 
         self.0
             .data
+            .wasi_ctx
             .push_preopen(WasiPreOpenDir::new(host_path, guest_path));
         Ok(())
     }
 
     pub fn push_arg(&mut self, arg: String) {
-        self.0.data.push_arg(arg);
+        self.0.data.wasi_ctx.push_arg(arg);
     }
 
     pub fn push_env(&mut self, key: &str, value: &str) {
-        self.0.data.push_env(key, value);
+        self.0.data.wasi_ctx.push_env(key, value);
     }
 }
 
 pub fn args_get<'a, T>(
     _: &'a mut T,
     mem: &'a mut Memory,
-    ctx: &'a mut WasiCtx,
+    ctx: &'a mut AsyncWasiCtx,
     args: Vec<types::WasmVal>,
 ) -> Result<Vec<WasmVal>, CoreError> {
     log::trace!("args_get enter");
@@ -697,7 +711,7 @@ pub fn args_get<'a, T>(
         let argv = *argv as usize;
         let argv_buf = *argv_buf as usize;
         Ok(to_wasm_return(p::args_get(
-            ctx,
+            &mut ctx.wasi_ctx,
             mem,
             WasmPtr::from(argv),
             WasmPtr::from(argv_buf),
@@ -710,7 +724,7 @@ pub fn args_get<'a, T>(
 pub fn args_sizes_get<'a, T>(
     _: &'a mut T,
     mem: &'a mut Memory,
-    ctx: &'a mut WasiCtx,
+    ctx: &'a mut AsyncWasiCtx,
     args: Vec<types::WasmVal>,
 ) -> Result<Vec<WasmVal>, CoreError> {
     log::trace!("args_sizes_get enter");
@@ -718,7 +732,7 @@ pub fn args_sizes_get<'a, T>(
         let argc = *argc as usize;
         let argv_buf_size = *argv_buf_size as usize;
         Ok(to_wasm_return(p::args_sizes_get(
-            ctx,
+            &mut ctx.wasi_ctx,
             mem,
             WasmPtr::from(argc),
             WasmPtr::from(argv_buf_size),
@@ -731,7 +745,7 @@ pub fn args_sizes_get<'a, T>(
 pub fn environ_get<'a, T>(
     _: &'a mut T,
     mem: &'a mut Memory,
-    ctx: &'a mut WasiCtx,
+    ctx: &'a mut AsyncWasiCtx,
     args: Vec<types::WasmVal>,
 ) -> Result<Vec<WasmVal>, CoreError> {
     log::trace!("environ_get enter");
@@ -739,7 +753,7 @@ pub fn environ_get<'a, T>(
         let environ = *p1 as usize;
         let environ_buf = *p2 as usize;
         Ok(to_wasm_return(p::environ_get(
-            ctx,
+            &mut ctx.wasi_ctx,
             mem,
             WasmPtr::from(environ),
             WasmPtr::from(environ_buf),
@@ -752,7 +766,7 @@ pub fn environ_get<'a, T>(
 pub fn environ_sizes_get<'a, T>(
     _: &'a mut T,
     mem: &'a mut Memory,
-    ctx: &'a mut WasiCtx,
+    ctx: &'a mut AsyncWasiCtx,
     args: Vec<types::WasmVal>,
 ) -> Result<Vec<WasmVal>, CoreError> {
     log::trace!("environ_sizes_get enter");
@@ -760,7 +774,7 @@ pub fn environ_sizes_get<'a, T>(
         let environ_count = *p1 as usize;
         let environ_buf_size = *p2 as usize;
         Ok(to_wasm_return(p::environ_sizes_get(
-            ctx,
+            &mut ctx.wasi_ctx,
             mem,
             WasmPtr::from(environ_count),
             WasmPtr::from(environ_buf_size),
@@ -773,7 +787,7 @@ pub fn environ_sizes_get<'a, T>(
 pub fn clock_res_get<'a, T>(
     _: &'a mut T,
     mem: &'a mut Memory,
-    ctx: &'a mut WasiCtx,
+    ctx: &'a mut AsyncWasiCtx,
     args: Vec<types::WasmVal>,
 ) -> Result<Vec<WasmVal>, CoreError> {
     log::trace!("clock_res_get enter");
@@ -781,7 +795,7 @@ pub fn clock_res_get<'a, T>(
         let clock_id = *p1 as u32;
         let resolution_ptr = *p2 as usize;
         Ok(to_wasm_return(p::clock_res_get(
-            ctx,
+            &mut ctx.wasi_ctx,
             mem,
             clock_id,
             WasmPtr::from(resolution_ptr),
@@ -794,7 +808,7 @@ pub fn clock_res_get<'a, T>(
 pub fn clock_time_get<'a, T>(
     _: &'a mut T,
     mem: &'a mut Memory,
-    ctx: &'a mut WasiCtx,
+    ctx: &'a mut AsyncWasiCtx,
     args: Vec<types::WasmVal>,
 ) -> Result<Vec<WasmVal>, CoreError> {
     log::trace!("clock_time_get enter");
@@ -804,7 +818,7 @@ pub fn clock_time_get<'a, T>(
         let time_ptr = *p3 as usize;
 
         Ok(to_wasm_return(p::clock_time_get(
-            ctx,
+            &mut ctx.wasi_ctx,
             mem,
             clock_id,
             precision,
@@ -818,7 +832,7 @@ pub fn clock_time_get<'a, T>(
 pub fn random_get<'a, T>(
     _: &'a mut T,
     mem: &'a mut Memory,
-    ctx: &'a mut WasiCtx,
+    ctx: &'a mut AsyncWasiCtx,
     args: Vec<types::WasmVal>,
 ) -> Result<Vec<WasmVal>, CoreError> {
     log::trace!("random_get enter");
@@ -827,7 +841,7 @@ pub fn random_get<'a, T>(
         let buf_len = *p2 as u32;
 
         Ok(to_wasm_return(p::random_get(
-            ctx,
+            &mut ctx.wasi_ctx,
             mem,
             WasmPtr::from(buf),
             buf_len,
@@ -840,7 +854,7 @@ pub fn random_get<'a, T>(
 pub fn fd_prestat_get<'a, T>(
     _: &'a mut T,
     mem: &'a mut Memory,
-    ctx: &'a mut WasiCtx,
+    ctx: &'a mut AsyncWasiCtx,
     args: Vec<types::WasmVal>,
 ) -> Result<Vec<WasmVal>, CoreError> {
     log::trace!("fd_prestat_get enter");
@@ -849,7 +863,7 @@ pub fn fd_prestat_get<'a, T>(
         let prestat_ptr = *p2 as usize;
 
         Ok(to_wasm_return(p::fd_prestat_get(
-            ctx,
+            &mut ctx.wasi_ctx,
             mem,
             fd,
             WasmPtr::from(prestat_ptr),
@@ -862,7 +876,7 @@ pub fn fd_prestat_get<'a, T>(
 pub fn fd_prestat_dir_name<'a, T>(
     _: &'a mut T,
     mem: &'a mut Memory,
-    ctx: &'a mut WasiCtx,
+    ctx: &'a mut AsyncWasiCtx,
     args: Vec<types::WasmVal>,
 ) -> Result<Vec<WasmVal>, CoreError> {
     log::trace!("fd_prestat_dir_name enter");
@@ -872,7 +886,7 @@ pub fn fd_prestat_dir_name<'a, T>(
         let path_max_len = *p3 as u32;
 
         Ok(to_wasm_return(p::fd_prestat_dir_name(
-            ctx,
+            &mut ctx.wasi_ctx,
             mem,
             fd,
             WasmPtr::from(path_buf_ptr),
@@ -886,7 +900,7 @@ pub fn fd_prestat_dir_name<'a, T>(
 pub fn fd_renumber<'a, T>(
     _: &'a mut T,
     mem: &'a mut Memory,
-    ctx: &'a mut WasiCtx,
+    ctx: &'a mut AsyncWasiCtx,
     args: Vec<types::WasmVal>,
 ) -> Result<Vec<WasmVal>, CoreError> {
     log::trace!("fd_renumber enter");
@@ -894,7 +908,12 @@ pub fn fd_renumber<'a, T>(
         let from = *p1;
         let to = *p2;
 
-        Ok(to_wasm_return(p::fd_renumber(ctx, mem, from, to)))
+        Ok(to_wasm_return(p::fd_renumber(
+            &mut ctx.wasi_ctx,
+            mem,
+            from,
+            to,
+        )))
     } else {
         Err(func_type_miss_match_error())
     }
@@ -903,7 +922,7 @@ pub fn fd_renumber<'a, T>(
 pub fn fd_advise<'a, T>(
     _: &'a mut T,
     mem: &'a mut Memory,
-    ctx: &'a mut WasiCtx,
+    ctx: &'a mut AsyncWasiCtx,
     args: Vec<types::WasmVal>,
 ) -> Result<Vec<WasmVal>, CoreError> {
     log::trace!("fd_advise enter");
@@ -916,7 +935,12 @@ pub fn fd_advise<'a, T>(
         let advice = *p4 as u8;
 
         Ok(to_wasm_return(p::fd_advise(
-            ctx, mem, fd, offset, len, advice,
+            &mut ctx.wasi_ctx,
+            mem,
+            fd,
+            offset,
+            len,
+            advice,
         )))
     } else {
         Err(func_type_miss_match_error())
@@ -926,7 +950,7 @@ pub fn fd_advise<'a, T>(
 pub fn fd_allocate<'a, T>(
     _: &'a mut T,
     mem: &'a mut Memory,
-    ctx: &'a mut WasiCtx,
+    ctx: &'a mut AsyncWasiCtx,
     args: Vec<types::WasmVal>,
 ) -> Result<Vec<WasmVal>, CoreError> {
     log::trace!("fd_allocate enter");
@@ -935,7 +959,13 @@ pub fn fd_allocate<'a, T>(
         let offset = *p2 as u64;
         let len = *p3 as u64;
 
-        Ok(to_wasm_return(p::fd_allocate(ctx, mem, fd, offset, len)))
+        Ok(to_wasm_return(p::fd_allocate(
+            &mut ctx.wasi_ctx,
+            mem,
+            fd,
+            offset,
+            len,
+        )))
     } else {
         Err(func_type_miss_match_error())
     }
@@ -944,14 +974,14 @@ pub fn fd_allocate<'a, T>(
 pub fn fd_close<'a, T>(
     _: &'a mut T,
     mem: &'a mut Memory,
-    ctx: &'a mut WasiCtx,
+    ctx: &'a mut AsyncWasiCtx,
     args: Vec<types::WasmVal>,
 ) -> Result<Vec<WasmVal>, CoreError> {
     log::trace!("fd_close enter");
     if let Some([WasmVal::I32(p1)]) = args.get(0..1) {
         let fd = *p1;
 
-        Ok(to_wasm_return(p::fd_close(ctx, mem, fd)))
+        Ok(to_wasm_return(p::fd_close(&mut ctx.wasi_ctx, mem, fd)))
     } else {
         Err(func_type_miss_match_error())
     }
@@ -960,7 +990,7 @@ pub fn fd_close<'a, T>(
 pub fn fd_seek<'a, T>(
     _: &'a mut T,
     mem: &'a mut Memory,
-    ctx: &'a mut WasiCtx,
+    ctx: &'a mut AsyncWasiCtx,
     args: Vec<types::WasmVal>,
 ) -> Result<Vec<WasmVal>, CoreError> {
     log::trace!("fd_seek enter");
@@ -974,7 +1004,7 @@ pub fn fd_seek<'a, T>(
         let newoffset_ptr = *p4 as usize;
 
         Ok(to_wasm_return(p::fd_seek(
-            ctx,
+            &mut ctx.wasi_ctx,
             mem,
             fd,
             offset,
@@ -989,14 +1019,14 @@ pub fn fd_seek<'a, T>(
 pub fn fd_sync<'a, T>(
     _: &'a mut T,
     mem: &'a mut Memory,
-    ctx: &'a mut WasiCtx,
+    ctx: &'a mut AsyncWasiCtx,
     args: Vec<types::WasmVal>,
 ) -> Result<Vec<WasmVal>, CoreError> {
     log::trace!("fd_sync enter");
     if let Some([WasmVal::I32(p1)]) = args.get(0..1) {
         let fd = *p1;
 
-        Ok(to_wasm_return(p::fd_sync(ctx, mem, fd)))
+        Ok(to_wasm_return(p::fd_sync(&mut ctx.wasi_ctx, mem, fd)))
     } else {
         Err(func_type_miss_match_error())
     }
@@ -1005,14 +1035,14 @@ pub fn fd_sync<'a, T>(
 pub fn fd_datasync<'a, T>(
     _: &'a mut T,
     mem: &'a mut Memory,
-    ctx: &'a mut WasiCtx,
+    ctx: &'a mut AsyncWasiCtx,
     args: Vec<types::WasmVal>,
 ) -> Result<Vec<WasmVal>, CoreError> {
     log::trace!("fd_datasync enter");
     if let Some([WasmVal::I32(p1)]) = args.get(0..1) {
         let fd = *p1;
 
-        Ok(to_wasm_return(p::fd_datasync(ctx, mem, fd)))
+        Ok(to_wasm_return(p::fd_datasync(&mut ctx.wasi_ctx, mem, fd)))
     } else {
         Err(func_type_miss_match_error())
     }
@@ -1021,7 +1051,7 @@ pub fn fd_datasync<'a, T>(
 pub fn fd_tell<'a, T>(
     _: &'a mut T,
     mem: &'a mut Memory,
-    ctx: &'a mut WasiCtx,
+    ctx: &'a mut AsyncWasiCtx,
     args: Vec<types::WasmVal>,
 ) -> Result<Vec<WasmVal>, CoreError> {
     log::trace!("fd_tell enter");
@@ -1030,7 +1060,7 @@ pub fn fd_tell<'a, T>(
         let offset = *p2 as usize;
 
         Ok(to_wasm_return(p::fd_tell(
-            ctx,
+            &mut ctx.wasi_ctx,
             mem,
             fd,
             WasmPtr::from(offset),
@@ -1043,7 +1073,7 @@ pub fn fd_tell<'a, T>(
 pub fn fd_fdstat_get<'a, T>(
     _: &'a mut T,
     mem: &'a mut Memory,
-    ctx: &'a mut WasiCtx,
+    ctx: &'a mut AsyncWasiCtx,
     args: Vec<types::WasmVal>,
 ) -> Result<Vec<WasmVal>, CoreError> {
     log::trace!("fd_fdstat_get enter");
@@ -1053,7 +1083,7 @@ pub fn fd_fdstat_get<'a, T>(
         let buf_ptr = *p2 as usize;
 
         Ok(to_wasm_return(p::fd_fdstat_get(
-            ctx,
+            &mut ctx.wasi_ctx,
             mem,
             fd,
             WasmPtr::from(buf_ptr),
@@ -1066,7 +1096,7 @@ pub fn fd_fdstat_get<'a, T>(
 pub fn fd_fdstat_set_flags<'a, T>(
     _: &'a mut T,
     mem: &'a mut Memory,
-    ctx: &'a mut WasiCtx,
+    ctx: &'a mut AsyncWasiCtx,
     args: Vec<types::WasmVal>,
 ) -> Result<Vec<WasmVal>, CoreError> {
     log::trace!("fd_fdstat_set_flags enter");
@@ -1075,7 +1105,12 @@ pub fn fd_fdstat_set_flags<'a, T>(
         let fd = *p1;
         let flags = *p2 as u16;
 
-        Ok(to_wasm_return(p::fd_fdstat_set_flags(ctx, mem, fd, flags)))
+        Ok(to_wasm_return(p::fd_fdstat_set_flags(
+            &mut ctx.wasi_ctx,
+            mem,
+            fd,
+            flags,
+        )))
     } else {
         Err(func_type_miss_match_error())
     }
@@ -1084,7 +1119,7 @@ pub fn fd_fdstat_set_flags<'a, T>(
 pub fn fd_fdstat_set_rights<'a, T>(
     _: &'a mut T,
     mem: &'a mut Memory,
-    ctx: &'a mut WasiCtx,
+    ctx: &'a mut AsyncWasiCtx,
     args: Vec<types::WasmVal>,
 ) -> Result<Vec<WasmVal>, CoreError> {
     log::trace!("fd_fdstat_set_rights enter");
@@ -1095,7 +1130,7 @@ pub fn fd_fdstat_set_rights<'a, T>(
         let fs_rights_inheriting = *p3 as u64;
 
         Ok(to_wasm_return(p::fd_fdstat_set_rights(
-            ctx,
+            &mut ctx.wasi_ctx,
             mem,
             fd,
             fs_rights_base,
@@ -1109,7 +1144,7 @@ pub fn fd_fdstat_set_rights<'a, T>(
 pub fn fd_filestat_get<'a, T>(
     _: &'a mut T,
     mem: &'a mut Memory,
-    ctx: &'a mut WasiCtx,
+    ctx: &'a mut AsyncWasiCtx,
     args: Vec<types::WasmVal>,
 ) -> Result<Vec<WasmVal>, CoreError> {
     log::trace!("fd_filestat_get enter");
@@ -1119,7 +1154,7 @@ pub fn fd_filestat_get<'a, T>(
         let buf = *p2 as usize;
 
         Ok(to_wasm_return(p::fd_filestat_get(
-            ctx,
+            &mut ctx.wasi_ctx,
             mem,
             fd,
             WasmPtr::from(buf),
@@ -1132,7 +1167,7 @@ pub fn fd_filestat_get<'a, T>(
 pub fn fd_filestat_set_size<'a, T>(
     _: &'a mut T,
     mem: &'a mut Memory,
-    ctx: &'a mut WasiCtx,
+    ctx: &'a mut AsyncWasiCtx,
     args: Vec<types::WasmVal>,
 ) -> Result<Vec<WasmVal>, CoreError> {
     log::trace!("fd_filestat_set_size enter");
@@ -1142,7 +1177,7 @@ pub fn fd_filestat_set_size<'a, T>(
         let buf = *p2 as usize;
 
         Ok(to_wasm_return(p::fd_filestat_get(
-            ctx,
+            &mut ctx.wasi_ctx,
             mem,
             fd,
             WasmPtr::from(buf),
@@ -1155,7 +1190,7 @@ pub fn fd_filestat_set_size<'a, T>(
 pub fn fd_filestat_set_times<'a, T>(
     _: &'a mut T,
     mem: &'a mut Memory,
-    ctx: &'a mut WasiCtx,
+    ctx: &'a mut AsyncWasiCtx,
     args: Vec<types::WasmVal>,
 ) -> Result<Vec<WasmVal>, CoreError> {
     log::trace!("fd_filestat_set_times enter");
@@ -1169,7 +1204,12 @@ pub fn fd_filestat_set_times<'a, T>(
         let fst_flags = *p4 as u16;
 
         Ok(to_wasm_return(p::fd_filestat_set_times(
-            ctx, mem, fd, st_atim, st_mtim, fst_flags,
+            &mut ctx.wasi_ctx,
+            mem,
+            fd,
+            st_atim,
+            st_mtim,
+            fst_flags,
         )))
     } else {
         Err(func_type_miss_match_error())
@@ -1179,7 +1219,7 @@ pub fn fd_filestat_set_times<'a, T>(
 pub fn fd_read<'a, T>(
     _: &'a mut T,
     mem: &'a mut Memory,
-    ctx: &'a mut WasiCtx,
+    ctx: &'a mut AsyncWasiCtx,
     args: Vec<types::WasmVal>,
 ) -> Result<Vec<WasmVal>, CoreError> {
     log::trace!("fd_read enter");
@@ -1193,7 +1233,7 @@ pub fn fd_read<'a, T>(
         let nread = *p4 as usize;
 
         Ok(to_wasm_return(p::fd_read(
-            ctx,
+            &mut ctx.wasi_ctx,
             mem,
             fd,
             WasmPtr::from(iovs),
@@ -1208,7 +1248,7 @@ pub fn fd_read<'a, T>(
 pub fn fd_pread<'a, T>(
     _: &'a mut T,
     mem: &'a mut Memory,
-    ctx: &'a mut WasiCtx,
+    ctx: &'a mut AsyncWasiCtx,
     args: Vec<types::WasmVal>,
 ) -> Result<Vec<WasmVal>, CoreError> {
     log::trace!("fd_pread enter");
@@ -1224,7 +1264,7 @@ pub fn fd_pread<'a, T>(
         let nread = *p5 as usize;
 
         Ok(to_wasm_return(p::fd_pread(
-            ctx,
+            &mut ctx.wasi_ctx,
             mem,
             fd,
             WasmPtr::from(iovs),
@@ -1240,7 +1280,7 @@ pub fn fd_pread<'a, T>(
 pub fn fd_write<'a, T>(
     _: &'a mut T,
     mem: &'a mut Memory,
-    ctx: &'a mut WasiCtx,
+    ctx: &'a mut AsyncWasiCtx,
     args: Vec<types::WasmVal>,
 ) -> Result<Vec<WasmVal>, CoreError> {
     log::trace!("fd_write enter");
@@ -1254,7 +1294,7 @@ pub fn fd_write<'a, T>(
         let nwritten = *p4 as usize;
 
         Ok(to_wasm_return(p::fd_write(
-            ctx,
+            &mut ctx.wasi_ctx,
             mem,
             fd,
             WasmPtr::from(iovs),
@@ -1269,7 +1309,7 @@ pub fn fd_write<'a, T>(
 pub fn fd_pwrite<'a, T>(
     _: &'a mut T,
     mem: &'a mut Memory,
-    ctx: &'a mut WasiCtx,
+    ctx: &'a mut AsyncWasiCtx,
     args: Vec<types::WasmVal>,
 ) -> Result<Vec<WasmVal>, CoreError> {
     log::trace!("fd_pwrite enter");
@@ -1285,7 +1325,7 @@ pub fn fd_pwrite<'a, T>(
         let nwritten = *p5 as usize;
 
         Ok(to_wasm_return(p::fd_pwrite(
-            ctx,
+            &mut ctx.wasi_ctx,
             mem,
             fd,
             WasmPtr::from(iovs),
@@ -1301,7 +1341,7 @@ pub fn fd_pwrite<'a, T>(
 pub fn fd_readdir<'a, T>(
     _: &'a mut T,
     mem: &'a mut Memory,
-    ctx: &'a mut WasiCtx,
+    ctx: &'a mut AsyncWasiCtx,
     args: Vec<types::WasmVal>,
 ) -> Result<Vec<WasmVal>, CoreError> {
     log::trace!("fd_readdir enter");
@@ -1317,7 +1357,7 @@ pub fn fd_readdir<'a, T>(
         let bufused_ptr = *p5 as usize;
 
         Ok(to_wasm_return(p::fd_readdir(
-            ctx,
+            &mut ctx.wasi_ctx,
             mem,
             fd,
             WasmPtr::from(buf),
@@ -1333,7 +1373,7 @@ pub fn fd_readdir<'a, T>(
 pub fn path_create_directory<'a, T>(
     _: &'a mut T,
     mem: &'a mut Memory,
-    ctx: &'a mut WasiCtx,
+    ctx: &'a mut AsyncWasiCtx,
     args: Vec<types::WasmVal>,
 ) -> Result<Vec<WasmVal>, CoreError> {
     log::trace!("path_create_directory enter");
@@ -1344,7 +1384,7 @@ pub fn path_create_directory<'a, T>(
         let path_len = *p3 as u32;
 
         Ok(to_wasm_return(p::path_create_directory(
-            ctx,
+            &mut ctx.wasi_ctx,
             mem,
             dirfd,
             WasmPtr::from(path_ptr),
@@ -1358,7 +1398,7 @@ pub fn path_create_directory<'a, T>(
 pub fn path_filestat_get<'a, T>(
     _: &'a mut T,
     mem: &'a mut Memory,
-    ctx: &'a mut WasiCtx,
+    ctx: &'a mut AsyncWasiCtx,
     args: Vec<types::WasmVal>,
 ) -> Result<Vec<WasmVal>, CoreError> {
     log::trace!("path_filestat_get enter");
@@ -1374,7 +1414,7 @@ pub fn path_filestat_get<'a, T>(
         let file_stat_ptr = *p5 as usize;
 
         Ok(to_wasm_return(p::path_filestat_get(
-            ctx,
+            &mut ctx.wasi_ctx,
             mem,
             fd,
             flags,
@@ -1390,7 +1430,7 @@ pub fn path_filestat_get<'a, T>(
 pub fn path_filestat_set_times<'a, T>(
     _: &'a mut T,
     _mem: &'a mut Memory,
-    _ctx: &'a mut WasiCtx,
+    _ctx: &'a mut AsyncWasiCtx,
     _args: Vec<types::WasmVal>,
 ) -> Result<Vec<WasmVal>, CoreError> {
     log::trace!("path_filestat_set_times enter");
@@ -1400,7 +1440,7 @@ pub fn path_filestat_set_times<'a, T>(
 pub fn path_link<'a, T>(
     _: &'a mut T,
     _mem: &'a mut Memory,
-    _ctx: &'a mut WasiCtx,
+    _ctx: &'a mut AsyncWasiCtx,
     _args: Vec<types::WasmVal>,
 ) -> Result<Vec<WasmVal>, CoreError> {
     log::trace!("path_link enter");
@@ -1410,7 +1450,7 @@ pub fn path_link<'a, T>(
 pub fn path_open<'a, T>(
     _: &'a mut T,
     mem: &'a mut Memory,
-    ctx: &'a mut WasiCtx,
+    ctx: &'a mut AsyncWasiCtx,
     args: Vec<types::WasmVal>,
 ) -> Result<Vec<WasmVal>, CoreError> {
     log::trace!("path_open enter");
@@ -1430,7 +1470,7 @@ pub fn path_open<'a, T>(
         let fd_ptr = *p9 as usize;
 
         Ok(to_wasm_return(p::path_open(
-            ctx,
+            &mut ctx.wasi_ctx,
             mem,
             dirfd,
             dirflags,
@@ -1450,7 +1490,7 @@ pub fn path_open<'a, T>(
 pub fn path_readlink<'a, T>(
     _: &'a mut T,
     _mem: &'a mut Memory,
-    _ctx: &'a mut WasiCtx,
+    _ctx: &'a mut AsyncWasiCtx,
     _args: Vec<types::WasmVal>,
 ) -> Result<Vec<WasmVal>, CoreError> {
     log::trace!("path_readlink enter");
@@ -1460,7 +1500,7 @@ pub fn path_readlink<'a, T>(
 pub fn path_remove_directory<'a, T>(
     _: &'a mut T,
     mem: &'a mut Memory,
-    ctx: &'a mut WasiCtx,
+    ctx: &'a mut AsyncWasiCtx,
     args: Vec<types::WasmVal>,
 ) -> Result<Vec<WasmVal>, CoreError> {
     log::trace!("path_remove_directory enter");
@@ -1471,7 +1511,7 @@ pub fn path_remove_directory<'a, T>(
         let path_len = *p3 as u32;
 
         Ok(to_wasm_return(p::path_remove_directory(
-            ctx,
+            &mut ctx.wasi_ctx,
             mem,
             fd,
             WasmPtr::from(path_ptr),
@@ -1485,7 +1525,7 @@ pub fn path_remove_directory<'a, T>(
 pub fn path_rename<'a, T>(
     _: &'a mut T,
     mem: &'a mut Memory,
-    ctx: &'a mut WasiCtx,
+    ctx: &'a mut AsyncWasiCtx,
     args: Vec<types::WasmVal>,
 ) -> Result<Vec<WasmVal>, CoreError> {
     log::trace!("path_rename enter");
@@ -1502,7 +1542,7 @@ pub fn path_rename<'a, T>(
         let new_path_len = *p6 as u32;
 
         Ok(to_wasm_return(p::path_rename(
-            ctx,
+            &mut ctx.wasi_ctx,
             mem,
             old_fd,
             WasmPtr::from(old_path),
@@ -1519,7 +1559,7 @@ pub fn path_rename<'a, T>(
 pub fn path_symlink<'a, T>(
     _: &'a mut T,
     _mem: &'a mut Memory,
-    _ctx: &'a mut WasiCtx,
+    _ctx: &'a mut AsyncWasiCtx,
     _args: Vec<types::WasmVal>,
 ) -> Result<Vec<WasmVal>, CoreError> {
     log::trace!("path_symlink enter");
@@ -1529,7 +1569,7 @@ pub fn path_symlink<'a, T>(
 pub fn path_unlink_file<'a, T>(
     _: &'a mut T,
     mem: &'a mut Memory,
-    ctx: &'a mut WasiCtx,
+    ctx: &'a mut AsyncWasiCtx,
     args: Vec<types::WasmVal>,
 ) -> Result<Vec<WasmVal>, CoreError> {
     log::trace!("path_unlink_file enter");
@@ -1540,7 +1580,7 @@ pub fn path_unlink_file<'a, T>(
         let path_len = *p3 as u32;
 
         Ok(to_wasm_return(p::path_unlink_file(
-            ctx,
+            &mut ctx.wasi_ctx,
             mem,
             fd,
             WasmPtr::from(path_ptr),
@@ -1554,14 +1594,14 @@ pub fn path_unlink_file<'a, T>(
 pub fn proc_exit<'a, T>(
     _: &'a mut T,
     mem: &'a mut Memory,
-    ctx: &'a mut WasiCtx,
+    ctx: &'a mut AsyncWasiCtx,
     args: Vec<types::WasmVal>,
 ) -> Result<Vec<WasmVal>, CoreError> {
     log::trace!("proc_exit enter");
     let n = 1;
     if let Some([WasmVal::I32(p1)]) = args.get(0..n) {
         let code = *p1 as u32;
-        p::proc_exit(ctx, mem, code);
+        p::proc_exit(&mut ctx.wasi_ctx, mem, code);
         Err(CoreError::terminated())
     } else {
         Err(func_type_miss_match_error())
@@ -1571,7 +1611,7 @@ pub fn proc_exit<'a, T>(
 pub fn proc_raise<'a, T>(
     _: &'a mut T,
     _mem: &'a mut Memory,
-    _ctx: &'a mut WasiCtx,
+    _ctx: &'a mut AsyncWasiCtx,
     _args: Vec<types::WasmVal>,
 ) -> Result<Vec<WasmVal>, CoreError> {
     log::trace!("proc_raise enter");
@@ -1582,7 +1622,7 @@ pub fn proc_raise<'a, T>(
 pub fn sched_yield<'a, T>(
     _: &'a mut T,
     _mem: &'a mut Memory,
-    _ctx: &'a mut WasiCtx,
+    _ctx: &'a mut AsyncWasiCtx,
     _args: Vec<types::WasmVal>,
 ) -> Result<Vec<WasmVal>, CoreError> {
     log::trace!("sched_yield enter");
@@ -1594,7 +1634,7 @@ pub fn sched_yield<'a, T>(
 pub fn sock_open<'a, T>(
     _: &'a mut T,
     mem: &'a mut Memory,
-    ctx: &'a mut WasiCtx,
+    ctx: &'a mut AsyncWasiCtx,
     args: Vec<types::WasmVal>,
 ) -> Result<Vec<WasmVal>, CoreError> {
     log::trace!("sock_open enter");
@@ -1605,7 +1645,7 @@ pub fn sock_open<'a, T>(
         let ro_fd_ptr = *p3 as usize;
 
         Ok(to_wasm_return(p::async_socket::sock_open(
-            ctx,
+            &mut ctx.wasi_ctx,
             mem,
             af,
             ty,
@@ -1619,7 +1659,7 @@ pub fn sock_open<'a, T>(
 pub fn sock_bind<'a, T>(
     _: &'a mut T,
     mem: &'a mut Memory,
-    ctx: &'a mut WasiCtx,
+    ctx: &'a mut AsyncWasiCtx,
     args: Vec<types::WasmVal>,
 ) -> Result<Vec<WasmVal>, CoreError> {
     log::trace!("sock_bind enter");
@@ -1629,7 +1669,7 @@ pub fn sock_bind<'a, T>(
         let addr_ptr = *p2 as usize;
         let port = *p3 as u32;
         Ok(to_wasm_return(p::async_socket::sock_bind(
-            ctx,
+            &mut ctx.wasi_ctx,
             mem,
             fd,
             WasmPtr::from(addr_ptr),
@@ -1643,7 +1683,7 @@ pub fn sock_bind<'a, T>(
 pub fn sock_listen<'a, T>(
     _: &'a mut T,
     mem: &'a mut Memory,
-    ctx: &'a mut WasiCtx,
+    ctx: &'a mut AsyncWasiCtx,
     args: Vec<types::WasmVal>,
 ) -> Result<Vec<WasmVal>, CoreError> {
     log::trace!("sock_listen enter");
@@ -1653,7 +1693,10 @@ pub fn sock_listen<'a, T>(
         let backlog = *p2 as u32;
 
         Ok(to_wasm_return(p::async_socket::sock_listen(
-            ctx, mem, fd, backlog,
+            &mut ctx.wasi_ctx,
+            mem,
+            fd,
+            backlog,
         )))
     } else {
         Err(func_type_miss_match_error())
@@ -1663,7 +1706,7 @@ pub fn sock_listen<'a, T>(
 pub fn sock_accept<'a, T>(
     _: &'a mut T,
     mem: &'a mut Memory,
-    ctx: &'a mut WasiCtx,
+    ctx: &'a mut AsyncWasiCtx,
     args: Vec<types::WasmVal>,
 ) -> ResultFuture<'a> {
     log::trace!("sock_accept enter");
@@ -1673,7 +1716,8 @@ pub fn sock_accept<'a, T>(
             let fd = *p1;
             let ro_fd_ptr = *p2 as usize;
             Ok(to_wasm_return(
-                p::async_socket::sock_accept(ctx, mem, fd, WasmPtr::from(ro_fd_ptr)).await,
+                p::async_socket::sock_accept(&mut ctx.wasi_ctx, mem, fd, WasmPtr::from(ro_fd_ptr))
+                    .await,
             ))
         } else {
             Err(func_type_miss_match_error())
@@ -1684,7 +1728,7 @@ pub fn sock_accept<'a, T>(
 pub fn sock_connect<'a, T>(
     _: &'a mut T,
     mem: &'a mut Memory,
-    ctx: &'a mut WasiCtx,
+    ctx: &'a mut AsyncWasiCtx,
     args: Vec<types::WasmVal>,
 ) -> ResultFuture<'a> {
     log::trace!("sock_connect enter");
@@ -1696,7 +1740,14 @@ pub fn sock_connect<'a, T>(
             let port = *p3 as u32;
 
             Ok(to_wasm_return(
-                p::async_socket::sock_connect(ctx, mem, fd, WasmPtr::from(addr_ptr), port).await,
+                p::async_socket::sock_connect(
+                    &mut ctx.wasi_ctx,
+                    mem,
+                    fd,
+                    WasmPtr::from(addr_ptr),
+                    port,
+                )
+                .await,
             ))
         } else {
             Err(func_type_miss_match_error())
@@ -1707,7 +1758,7 @@ pub fn sock_connect<'a, T>(
 pub fn sock_recv<'a, T>(
     _: &'a mut T,
     mem: &'a mut Memory,
-    ctx: &'a mut WasiCtx,
+    ctx: &'a mut AsyncWasiCtx,
     args: Vec<types::WasmVal>,
 ) -> ResultFuture<'a> {
     log::trace!("sock_recv enter");
@@ -1726,7 +1777,7 @@ pub fn sock_recv<'a, T>(
 
             Ok(to_wasm_return(
                 p::async_socket::sock_recv(
-                    ctx,
+                    &mut ctx.wasi_ctx,
                     mem,
                     fd,
                     WasmPtr::from(buf_ptr),
@@ -1746,7 +1797,7 @@ pub fn sock_recv<'a, T>(
 pub fn sock_recv_from<'a, T>(
     _: &'a mut T,
     mem: &'a mut Memory,
-    ctx: &'a mut WasiCtx,
+    ctx: &'a mut AsyncWasiCtx,
     args: Vec<types::WasmVal>,
 ) -> ResultFuture<'a> {
     log::trace!("sock_recv_from enter");
@@ -1767,7 +1818,7 @@ pub fn sock_recv_from<'a, T>(
 
             Ok(to_wasm_return(
                 p::async_socket::sock_recv_from(
-                    ctx,
+                    &mut ctx.wasi_ctx,
                     mem,
                     fd,
                     WasmPtr::from(buf_ptr),
@@ -1789,7 +1840,7 @@ pub fn sock_recv_from<'a, T>(
 pub fn sock_send<'a, T>(
     _: &'a mut T,
     mem: &'a mut Memory,
-    ctx: &'a mut WasiCtx,
+    ctx: &'a mut AsyncWasiCtx,
     args: Vec<types::WasmVal>,
 ) -> ResultFuture<'a> {
     log::trace!("sock_send enter");
@@ -1807,7 +1858,7 @@ pub fn sock_send<'a, T>(
 
             Ok(to_wasm_return(
                 p::async_socket::sock_send(
-                    ctx,
+                    &mut ctx.wasi_ctx,
                     mem,
                     fd,
                     WasmPtr::from(buf_ptr),
@@ -1826,7 +1877,7 @@ pub fn sock_send<'a, T>(
 pub fn sock_send_to<'a, T>(
     _: &'a mut T,
     mem: &'a mut Memory,
-    ctx: &'a mut WasiCtx,
+    ctx: &'a mut AsyncWasiCtx,
     args: Vec<types::WasmVal>,
 ) -> ResultFuture<'a> {
     log::trace!("sock_send_to enter");
@@ -1846,7 +1897,7 @@ pub fn sock_send_to<'a, T>(
 
             Ok(to_wasm_return(
                 p::async_socket::sock_send_to(
-                    ctx,
+                    &mut ctx.wasi_ctx,
                     mem,
                     fd,
                     WasmPtr::from(buf_ptr),
@@ -1867,7 +1918,7 @@ pub fn sock_send_to<'a, T>(
 pub fn sock_shutdown<'a, T>(
     _: &'a mut T,
     mem: &'a mut Memory,
-    ctx: &'a mut WasiCtx,
+    ctx: &'a mut AsyncWasiCtx,
     args: Vec<types::WasmVal>,
 ) -> Result<Vec<WasmVal>, CoreError> {
     log::trace!("sock_shutdown enter");
@@ -1876,7 +1927,10 @@ pub fn sock_shutdown<'a, T>(
         let fd = *p1;
         let how = *p2 as u8;
         Ok(to_wasm_return(p::async_socket::sock_shutdown(
-            ctx, mem, fd, how,
+            &mut ctx.wasi_ctx,
+            mem,
+            fd,
+            how,
         )))
     } else {
         Err(func_type_miss_match_error())
@@ -1886,7 +1940,7 @@ pub fn sock_shutdown<'a, T>(
 pub fn sock_getpeeraddr<'a, T>(
     _: &'a mut T,
     mem: &'a mut Memory,
-    ctx: &'a mut WasiCtx,
+    ctx: &'a mut AsyncWasiCtx,
     args: Vec<types::WasmVal>,
 ) -> Result<Vec<WasmVal>, CoreError> {
     log::trace!("sock_getpeeraddr enter");
@@ -1899,7 +1953,7 @@ pub fn sock_getpeeraddr<'a, T>(
         let addr_type = *p3 as usize;
         let port_ptr = *p4 as usize;
         Ok(to_wasm_return(p::async_socket::sock_getpeeraddr(
-            ctx,
+            &mut ctx.wasi_ctx,
             mem,
             fd,
             WasmPtr::from(wasi_addr_ptr),
@@ -1914,7 +1968,7 @@ pub fn sock_getpeeraddr<'a, T>(
 pub fn sock_getlocaladdr<'a, T>(
     _: &'a mut T,
     mem: &'a mut Memory,
-    ctx: &'a mut WasiCtx,
+    ctx: &'a mut AsyncWasiCtx,
     args: Vec<types::WasmVal>,
 ) -> Result<Vec<WasmVal>, CoreError> {
     log::trace!("sock_getlocaladdr enter");
@@ -1927,7 +1981,7 @@ pub fn sock_getlocaladdr<'a, T>(
         let addr_type = *p3 as usize;
         let port_ptr = *p4 as usize;
         Ok(to_wasm_return(p::async_socket::sock_getlocaladdr(
-            ctx,
+            &mut ctx.wasi_ctx,
             mem,
             fd,
             WasmPtr::from(wasi_addr_ptr),
@@ -1942,7 +1996,7 @@ pub fn sock_getlocaladdr<'a, T>(
 pub fn sock_getsockopt<'a, T>(
     _: &'a mut T,
     mem: &'a mut Memory,
-    ctx: &'a mut WasiCtx,
+    ctx: &'a mut AsyncWasiCtx,
     args: Vec<types::WasmVal>,
 ) -> Result<Vec<WasmVal>, CoreError> {
     log::trace!("sock_getsockopt enter");
@@ -1957,7 +2011,7 @@ pub fn sock_getsockopt<'a, T>(
         let flag = *p4 as usize;
         let flag_size_ptr = *p5 as usize;
         Ok(to_wasm_return(p::async_socket::sock_getsockopt(
-            ctx,
+            &mut ctx.wasi_ctx,
             mem,
             fd,
             level,
@@ -1973,7 +2027,7 @@ pub fn sock_getsockopt<'a, T>(
 pub fn sock_setsockopt<'a, T>(
     _: &'a mut T,
     mem: &'a mut Memory,
-    ctx: &'a mut WasiCtx,
+    ctx: &'a mut AsyncWasiCtx,
     args: Vec<types::WasmVal>,
 ) -> Result<Vec<WasmVal>, CoreError> {
     log::trace!("sock_setsockopt enter");
@@ -1988,7 +2042,7 @@ pub fn sock_setsockopt<'a, T>(
         let flag = *p4 as usize;
         let flag_size = *p5 as u32;
         Ok(to_wasm_return(p::async_socket::sock_setsockopt(
-            ctx,
+            &mut ctx.wasi_ctx,
             mem,
             fd,
             level,
@@ -2004,7 +2058,7 @@ pub fn sock_setsockopt<'a, T>(
 pub fn poll_oneoff<'a, T>(
     _: &'a mut T,
     mem: &'a mut Memory,
-    ctx: &'a mut WasiCtx,
+    ctx: &'a mut AsyncWasiCtx,
     args: Vec<types::WasmVal>,
 ) -> ResultFuture<'a> {
     log::trace!("poll_oneoff enter");
@@ -2018,35 +2072,39 @@ pub fn poll_oneoff<'a, T>(
             let nsubscriptions = *p3 as u32;
             let revents_num_ptr = *p4 as usize;
 
-            let poll_oneoff_fut = p::async_poll::poll_oneoff(
-                ctx,
-                mem,
-                WasmPtr::from(in_ptr),
-                WasmPtr::from(out_ptr),
-                nsubscriptions,
-                WasmPtr::from(revents_num_ptr),
-            );
-
-            let timeout = tokio::time::sleep(std::time::Duration::from_secs(3));
-
-            tokio::select! {
-                r = poll_oneoff_fut =>{return Ok(to_wasm_return(r))}
-                _=timeout=>{}
+            if let Some((dur, s)) = ctx.yield_hook {
+                'a: loop {
+                    let poll_oneoff_fut = p::async_poll::poll_oneoff(
+                        &mut ctx.wasi_ctx,
+                        mem,
+                        WasmPtr::from(in_ptr),
+                        WasmPtr::from(out_ptr),
+                        nsubscriptions,
+                        WasmPtr::from(revents_num_ptr),
+                    );
+                    if let Ok(r) = tokio::time::timeout(dur, poll_oneoff_fut).await {
+                        return Ok(to_wasm_return(r));
+                    } else {
+                        if s(&ctx.wasi_ctx.io_state) {
+                            return Err(CoreError::Yield);
+                        } else {
+                            continue 'a;
+                        }
+                    }
+                }
+            } else {
+                Ok(to_wasm_return(
+                    p::async_poll::poll_oneoff(
+                        &mut ctx.wasi_ctx,
+                        mem,
+                        WasmPtr::from(in_ptr),
+                        WasmPtr::from(out_ptr),
+                        nsubscriptions,
+                        WasmPtr::from(revents_num_ptr),
+                    )
+                    .await,
+                ))
             }
-
-            log::info!("[wasi_ctx.io_state] {:?}", ctx.io_state);
-
-            Ok(to_wasm_return(
-                p::async_poll::poll_oneoff(
-                    ctx,
-                    mem,
-                    WasmPtr::from(in_ptr),
-                    WasmPtr::from(out_ptr),
-                    nsubscriptions,
-                    WasmPtr::from(revents_num_ptr),
-                )
-                .await,
-            ))
         } else {
             Err(func_type_miss_match_error())
         }
@@ -2056,7 +2114,7 @@ pub fn poll_oneoff<'a, T>(
 pub fn sock_lookup_ip<'a, T>(
     _: &'a mut T,
     mem: &'a mut Memory,
-    ctx: &'a mut WasiCtx,
+    ctx: &'a mut AsyncWasiCtx,
     args: Vec<types::WasmVal>,
 ) -> ResultFuture<'a> {
     log::trace!("sock_lookup_ip enter");
@@ -2074,7 +2132,7 @@ pub fn sock_lookup_ip<'a, T>(
             let raddr_num_ptr = *p6 as usize;
             Ok(to_wasm_return(
                 p::async_socket::sock_lookup_ip(
-                    ctx,
+                    &mut ctx.wasi_ctx,
                     mem,
                     WasmPtr::from(host_name_ptr),
                     host_name_len,

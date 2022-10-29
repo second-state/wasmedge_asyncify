@@ -74,6 +74,6 @@ async fn run_test() {
 
     let mut inst = module::AsyncInstance::instance(executor, &mut store, &module).unwrap();
 
-    let r = inst.call("test", vec![]).unwrap().await.unwrap();
+    let r = inst.call("test", vec![]).await.unwrap();
     assert_eq!(r.first().cloned(), Some(types::WasmVal::I32(3)));
 }

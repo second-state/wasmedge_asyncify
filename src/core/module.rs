@@ -73,8 +73,8 @@ pub(crate) trait AsInstance {
 #[derive(Debug)]
 pub struct ImportModule<T: Sized + Send> {
     pub(crate) inner: InnerInstance,
-    pub(crate) name: String,
-    pub(crate) data: Box<T>,
+    pub name: String,
+    pub data: Box<T>,
 }
 
 impl<T: Sized + Send> ImportModule<T> {

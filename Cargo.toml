@@ -8,7 +8,9 @@ edition = "2021"
 [dependencies]
 binaryen = { version = "0.12.1", git = "https://github.com/second-state/binaryen-rs.git", branch = "feat/multi-memories-asyncify" }
 wasmedge-sys-ffi = { version = "0.10", path = "./wasmedge_sys_ffi" }
-wasmedge-async-wasi = { path = "./wasmedge_async_wasi" }
+wasmedge-async-wasi = { path = "./wasmedge_async_wasi", features = [
+    "serialize",
+] }
 waker-fn = "1"
 chrono = "0.4"
 tokio = { version = "1", features = ["full"] }

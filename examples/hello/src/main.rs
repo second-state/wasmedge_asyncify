@@ -61,5 +61,5 @@ async fn main() {
 
     // call _start function
     println!("call _start");
-    inst.call("_start", vec![]).unwrap().await.unwrap();
+    inst.call("_start", vec![]).await.unwrap();
 }

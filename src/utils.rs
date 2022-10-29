@@ -43,6 +43,7 @@ fn gen_runtime_error(code: u32) -> Result<(), CoreError> {
         0x08 => Err(CoreError::Common(CoreCommonError::NotValidated)),
         0x09 => Err(CoreError::Common(CoreCommonError::UserDefError)),
         0x0A => Err(CoreError::Asyncify),
+        0x0B => Err(CoreError::Yield),
 
         // Load phase
         0x20 => Err(CoreError::Load(CoreLoadError::IllegalPath)),
@@ -246,8 +247,9 @@ impl Into<WasmEdge_Result> for CoreError {
                     ffi::WasmEdge_ResultGen(ffi::WasmEdge_ErrCategory_UserLevelError, user_code)
                 }
             }
-            // todo: check
+            // sync wasmedge
             CoreError::Asyncify => 0x0A,
+            CoreError::Yield => 0x0B,
         };
         unsafe { ffi::WasmEdge_ResultGen(ffi::WasmEdge_ErrCategory_WASM, code) }
     }

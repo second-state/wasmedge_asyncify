@@ -16,6 +16,8 @@ pub enum CoreError {
     User(u32),
     #[error("Asyncify error")]
     Asyncify,
+    #[error("Yield")]
+    Yield,
 }
 
 impl CoreError {
@@ -25,6 +27,14 @@ impl CoreError {
 
     pub fn terminated() -> Self {
         CoreError::Common(CoreCommonError::Terminated)
+    }
+
+    pub fn is_yield(&self) -> bool {
+        if let Self::Yield = self {
+            true
+        } else {
+            false
+        }
     }
 }
 
