@@ -6,7 +6,7 @@ use crate::utils::check;
 
 use wasmedge_sys_ffi as ffi;
 
-pub type CodegenConfig = binaryen::CodegenConfig;
+pub(crate) type CodegenConfig = binaryen::CodegenConfig;
 
 pub struct Loader {
     pub(crate) loader_inner: *mut ffi::WasmEdge_LoaderContext,
@@ -114,10 +114,29 @@ pub(crate) fn pass_module<'a, B: AsRef<str>, I: IntoIterator<Item = B>>(
             .run_optimization_passes(passes, &codegen_config)
             .ok()?;
 
+        export_all(&mut module);
+
         let new_wasm = module.write();
         Some(Cow::Owned(new_wasm))
     } else {
         Some(Cow::Borrowed(wasm))
+    }
+}
+
+fn export_all(module: &mut binaryen::Module) {
+    use binaryen::ffi as b;
+    unsafe {
+        let module = module.raw();
+
+        //export all global
+        let globle_n = b::BinaryenGetNumGlobals(module);
+        for i in 0..globle_n {
+            let global = b::BinaryenGetGlobalByIndex(module, i);
+            let global_name = b::BinaryenGlobalGetName(global);
+            let external_name =
+                std::ffi::CString::new(format!("wasmedge_asyncify_export_global_{}", i)).unwrap();
+            b::BinaryenAddGlobalExport(module, global_name, external_name.as_ptr());
+        }
     }
 }
 

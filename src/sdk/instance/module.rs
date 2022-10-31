@@ -1,5 +1,7 @@
 use std::{
+    fmt::Debug,
     pin::Pin,
+    sync::Arc,
     task::{Context, Poll, Waker},
 };
 
@@ -7,7 +9,7 @@ use crate::{
     core::{
         executor::{Executor, InnerExecutor},
         instance::function::{FnWrapper, FuncRef, Function},
-        AsInnerInstance, AsInstance, AstModule, ImportModule, InnerInstance,
+        AsInnerInstance, AsInstance, AstModule, Global, ImportModule, InnerInstance, MutGlobal,
     },
     error::{CoreCommonError, CoreError, InstanceError},
     types::{ValType, WasmEdgeString, WasmVal},
@@ -30,6 +32,23 @@ pub struct AsyncInstance<'import> {
     _store: std::marker::PhantomData<Store<'import>>,
     executor: Executor,
     inner: InnerInstance,
+}
+
+pub struct InstanceSnapshot {
+    pub globals: Vec<MutGlobal>,
+    pub memories: Vec<(String, Arc<Vec<u8>>)>,
+}
+
+impl Debug for InstanceSnapshot {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "InstanceRunState{{ globals:{:?}, ", self.globals)?;
+        write!(f, "memories:{{ ")?;
+        for mem in &self.memories {
+            write!(f, "({},{}) ", &mem.0, mem.1.len())?;
+        }
+        write!(f, "}}")?;
+        Ok(())
+    }
 }
 
 impl<'a> AsyncInstance<'a> {
@@ -83,6 +102,41 @@ impl<'a> AsyncInstance<'a> {
             return Ok(*i == 0);
         }
         return Ok(true);
+    }
+
+    pub fn snapshot(&self) -> InstanceSnapshot {
+        let mut globals = vec![];
+        for global in self.inner.get_all_exports_globals() {
+            if let Global::Mut(g) = global {
+                globals.push(g);
+            }
+        }
+        let mut memories = vec![];
+        for (name, mem) in self.inner.get_all_exports_memories() {
+            let page_size = mem.page_size() as usize;
+            let mem_end = page_size * (64 * 1024);
+            let data = mem
+                .data_pointer(0, mem_end)
+                .map(|v| Arc::new(v.to_vec()))
+                .unwrap_or_default();
+            memories.push((name, data));
+        }
+
+        InstanceSnapshot { globals, memories }
+    }
+
+    pub fn apply_snapshot(&mut self, snapshot: InstanceSnapshot) -> Result<(), InstanceError> {
+        let InstanceSnapshot { globals, memories } = snapshot;
+        for g in globals {
+            self.inner.set_global(g)?;
+        }
+        for (name, data) in memories {
+            let mut mem = self.inner.get_memory(&name)?;
+            mem.write_bytes(data.as_slice(), 0)
+                .map_err(|_| InstanceError::WriteMem(name))?;
+        }
+
+        Ok(())
     }
 
     pub async fn call<'r>(

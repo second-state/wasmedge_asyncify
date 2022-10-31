@@ -5,6 +5,7 @@ use crate::error::{CoreError, CoreExecutionError};
 use crate::module::ResultFuture;
 use crate::types::{ValType, WasmVal};
 use crate::{types, ImportModule, Memory};
+pub use wasmedge_async_wasi::snapshots;
 use wasmedge_async_wasi::snapshots::common::memory::WasmPtr;
 use wasmedge_async_wasi::snapshots::env::Errno;
 use wasmedge_async_wasi::snapshots::preview_1 as p;
@@ -12,7 +13,8 @@ use wasmedge_async_wasi::snapshots::WasiCtx;
 
 mod memory;
 
-pub use wasmedge_async_wasi::snapshots::serialize::IoState;
+use serialize::IoState;
+pub use wasmedge_async_wasi::snapshots::serialize;
 
 pub struct AsyncWasiCtx {
     pub wasi_ctx: WasiCtx,
@@ -51,8 +53,12 @@ pub struct NotDirError;
 
 impl AsyncWasiImport {
     pub fn new() -> Option<Self> {
+        Self::with_wasi_ctx(WasiCtx::new())
+    }
+
+    pub fn with_wasi_ctx(wasi_ctx: WasiCtx) -> Option<Self> {
         let wasi_ctx = AsyncWasiCtx {
-            wasi_ctx: WasiCtx::new(),
+            wasi_ctx,
             yield_hook: None,
         };
         let mut module = ImportModule::create("wasi_snapshot_preview1", wasi_ctx).ok()?;

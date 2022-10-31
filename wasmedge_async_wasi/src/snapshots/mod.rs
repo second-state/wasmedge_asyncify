@@ -350,9 +350,26 @@ pub mod serialize {
         }
     }
 
+    impl From<(SerialWasiCtx, Vec<Option<VFD>>)> for super::WasiCtx {
+        fn from((ctx, vfs): (SerialWasiCtx, Vec<Option<VFD>>)) -> Self {
+            ctx.resume(vfs)
+        }
+    }
+
     impl SerialWasiCtx {
-        pub fn resume_without_fd(self) -> std::io::Result<(super::WasiCtx, Vec<SerialVFD>)> {
+        pub fn resume(self, vfs: Vec<Option<VFD>>) -> super::WasiCtx {
             let Self {
+                args,
+                envs,
+                vfs_preopen_limit,
+                vfs_select_index,
+                vfs_last_index,
+                io_state,
+                exit_code,
+                ..
+            } = self;
+
+            super::WasiCtx {
                 args,
                 envs,
                 vfs,
@@ -361,21 +378,7 @@ pub mod serialize {
                 vfs_last_index,
                 io_state,
                 exit_code,
-            } = self;
-
-            Ok((
-                super::WasiCtx {
-                    args,
-                    envs,
-                    vfs: vec![],
-                    vfs_preopen_limit,
-                    vfs_select_index,
-                    vfs_last_index,
-                    io_state,
-                    exit_code,
-                },
-                vfs,
-            ))
+            }
         }
     }
 
@@ -446,10 +449,16 @@ pub mod serialize {
 
     impl Into<WasiSocketState> for SerialWasiSocketState {
         fn into(self) -> WasiSocketState {
+            (&self).into()
+        }
+    }
+
+    impl Into<WasiSocketState> for &SerialWasiSocketState {
+        fn into(self) -> WasiSocketState {
             WasiSocketState {
                 sock_type: self.sock_type.clone().into(),
-                local_addr: self.local_addr.map(|s| s.parse().unwrap()),
-                peer_addr: self.peer_addr.map(|s| s.parse().unwrap()),
+                local_addr: self.local_addr.clone().map(|s| s.parse().unwrap()),
+                peer_addr: self.peer_addr.clone().map(|s| s.parse().unwrap()),
                 backlog: self.backlog,
                 shutdown: None,
                 nonblocking: self.nonblocking,

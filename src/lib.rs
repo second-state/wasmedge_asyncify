@@ -4,10 +4,12 @@ pub mod error;
 mod sdk;
 mod utils;
 
+pub use crate::core::ast_module;
 pub use crate::core::config::Config;
 pub use crate::core::executor::Executor;
 pub use crate::core::instance::memory::Memory;
 pub use crate::core::types;
+pub use crate::core::AstModule;
 pub use crate::core::ImportModule;
 pub use crate::core::Loader;
 pub use sdk::*;

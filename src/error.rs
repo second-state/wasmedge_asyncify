@@ -232,8 +232,12 @@ pub enum InstanceError {
     NotFoundTable(String),
     #[error("Not found the target memory ({0})")]
     NotFoundMem(String),
+    #[error("Fail to write memory ({0})")]
+    WriteMem(String),
     #[error("Not found the target global ({0})")]
     NotFoundGlobal(String),
+    #[error("Not found the target mutable global ({0})")]
+    NotFoundMutGlobal(String),
     #[error("Found an interior nul byte")]
     FoundNulByte(#[from] std::ffi::NulError),
 }

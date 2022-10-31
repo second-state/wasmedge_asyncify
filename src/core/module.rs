@@ -2,13 +2,31 @@
 
 use wasmedge_sys_ffi as ffi;
 
-use crate::error::InstanceError;
+use crate::{error::InstanceError, types::WasmVal};
 
 use super::{
     instance::{function::FuncRef, memory::Memory},
     instance::{function::InnerFunc, memory::InnerMemory},
     types::WasmEdgeString,
 };
+
+#[derive(Debug, Clone)]
+pub struct ConstGlobal {
+    pub name: String,
+    pub val: WasmVal,
+}
+
+#[derive(Debug, Clone)]
+pub struct MutGlobal {
+    pub name: String,
+    pub val: WasmVal,
+}
+
+#[derive(Debug, Clone)]
+pub enum Global {
+    Const(ConstGlobal),
+    Mut(MutGlobal),
+}
 
 pub(crate) trait AsInnerInstance {
     unsafe fn get_mut_ptr(&self) -> *mut ffi::WasmEdge_ModuleInstanceContext;
@@ -63,11 +81,17 @@ pub(crate) trait AsInstance {
     /// If fail to find the target [memory instance](crate::Memory), then an error is returned.
     fn get_memory(&self, name: &str) -> Result<Memory, InstanceError>;
 
+    fn get_all_exports_memories(&self) -> Vec<(String, Memory)>;
+
     /// Returns the length of the exported [memory instances](crate::Memory) in this module instance.
     fn mem_len(&self) -> u32;
 
     /// Returns the names of all exported [memory instances](crate::Memory) in this module instance.
     fn mem_names(&self) -> Option<Vec<String>>;
+
+    fn get_all_exports_globals(&self) -> Vec<Global>;
+
+    fn set_global(&mut self, global: MutGlobal) -> Result<(), InstanceError>;
 }
 
 #[derive(Debug)]
@@ -136,6 +160,33 @@ impl<T: AsInnerInstance> AsInstance for T {
         }
     }
 
+    fn get_all_exports_memories(&self) -> Vec<(String, Memory)> {
+        unsafe {
+            let mut memories = vec![];
+
+            let len_mem_names = ffi::WasmEdge_ModuleInstanceListMemoryLength(self.get_mut_ptr());
+            let mut mem_names = Vec::with_capacity(len_mem_names as usize);
+            let len = ffi::WasmEdge_ModuleInstanceListMemory(
+                self.get_mut_ptr(),
+                mem_names.as_mut_ptr(),
+                len_mem_names,
+            );
+            mem_names.set_len(len as usize);
+
+            for mem_name in mem_names {
+                let ptr = ffi::WasmEdge_ModuleInstanceFindMemory(self.get_mut_ptr(), mem_name);
+                if !ptr.is_null() {
+                    let mem_name: Result<String, std::str::Utf8Error> = mem_name.into();
+                    if let Ok(name) = mem_name {
+                        memories.push((name, Memory::from_raw(ptr)));
+                    }
+                }
+            }
+
+            memories
+        }
+    }
+
     /// Returns the length of the exported [function instances](crate::Function) in this module instance.
     fn func_len(&self) -> u32 {
         unsafe { ffi::WasmEdge_ModuleInstanceListFunctionLength(self.get_mut_ptr()) }
@@ -180,12 +231,12 @@ impl<T: AsInnerInstance> AsInstance for T {
             true => {
                 let mut mem_names = Vec::with_capacity(len_mem_names as usize);
                 unsafe {
-                    ffi::WasmEdge_ModuleInstanceListMemory(
+                    let len = ffi::WasmEdge_ModuleInstanceListMemory(
                         self.get_mut_ptr(),
                         mem_names.as_mut_ptr(),
                         len_mem_names,
                     );
-                    mem_names.set_len(len_mem_names as usize);
+                    mem_names.set_len(len as usize);
                 }
 
                 let names = mem_names
@@ -199,5 +250,65 @@ impl<T: AsInnerInstance> AsInstance for T {
             }
             false => None,
         }
+    }
+
+    fn get_all_exports_globals(&self) -> Vec<Global> {
+        unsafe {
+            let mut globals = vec![];
+            let module = self.get_mut_ptr();
+            let globals_num = ffi::WasmEdge_ModuleInstanceListGlobalLength(module);
+            let mut global_names = Vec::with_capacity(globals_num as usize);
+            let len = ffi::WasmEdge_ModuleInstanceListGlobal(
+                self.get_mut_ptr(),
+                global_names.as_mut_ptr(),
+                globals_num,
+            );
+            global_names.set_len(len as usize);
+
+            for name in global_names {
+                let global_ctx = ffi::WasmEdge_ModuleInstanceFindGlobal(module, name);
+                let global_type = ffi::WasmEdge_GlobalInstanceGetGlobalType(global_ctx);
+                let val = WasmVal::from(ffi::WasmEdge_GlobalInstanceGetValue(global_ctx));
+                if ffi::WasmEdge_Mutability_Const
+                    == ffi::WasmEdge_GlobalTypeGetMutability(global_type)
+                {
+                    let name: Result<String, std::str::Utf8Error> = name.into();
+                    if let Ok(name) = name {
+                        globals.push(Global::Const(ConstGlobal { name, val }));
+                    }
+                } else {
+                    let name: Result<String, std::str::Utf8Error> = name.into();
+                    if let Ok(name) = name {
+                        globals.push(Global::Mut(MutGlobal { name, val }));
+                    }
+                };
+            }
+
+            globals
+        }
+    }
+
+    fn set_global(&mut self, global: MutGlobal) -> Result<(), InstanceError> {
+        unsafe {
+            let module = self.get_mut_ptr();
+            let MutGlobal { name, val } = global;
+            let wasmedge_name = WasmEdgeString::new(&name)?;
+            let global_ctx = ffi::WasmEdge_ModuleInstanceFindGlobal(module, wasmedge_name.as_raw());
+            if global_ctx.is_null() {
+                return Err(InstanceError::NotFoundMutGlobal(name));
+            }
+            let global_type = ffi::WasmEdge_GlobalInstanceGetGlobalType(global_ctx);
+            if global_type.is_null() {
+                return Err(InstanceError::NotFoundMutGlobal(name));
+            }
+            if ffi::WasmEdge_Mutability_Const
+                == ffi::WasmEdge_GlobalTypeGetMutability(global_ctx as *const _)
+            {
+                return Err(InstanceError::NotFoundMutGlobal(name));
+            }
+
+            ffi::WasmEdge_GlobalInstanceSetValue(global_ctx, val.into());
+        }
+        Ok(())
     }
 }

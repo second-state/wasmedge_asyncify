@@ -116,7 +116,8 @@ impl Memory {
         }
     }
 
-    pub fn size(&self) -> u32 {
+    /// Get the current page size (64 KiB of each page) of a memory instance.
+    pub fn page_size(&self) -> u32 {
         unsafe { ffi::WasmEdge_MemoryInstanceGetPageSize(self.inner.0) as u32 }
     }
 
