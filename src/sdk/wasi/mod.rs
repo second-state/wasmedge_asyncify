@@ -1721,10 +1721,36 @@ pub fn sock_accept<'a, T>(
         if let Some([WasmVal::I32(p1), WasmVal::I32(p2)]) = args.get(0..n) {
             let fd = *p1;
             let ro_fd_ptr = *p2 as usize;
-            Ok(to_wasm_return(
-                p::async_socket::sock_accept(&mut ctx.wasi_ctx, mem, fd, WasmPtr::from(ro_fd_ptr))
+
+            if let Some((dur, hook)) = ctx.yield_hook {
+                'a: loop {
+                    let accept_fut = p::async_socket::sock_accept(
+                        &mut ctx.wasi_ctx,
+                        mem,
+                        fd,
+                        WasmPtr::from(ro_fd_ptr),
+                    );
+                    if let Ok(r) = tokio::time::timeout(dur, accept_fut).await {
+                        return Ok(to_wasm_return(r));
+                    } else {
+                        if hook(&ctx.wasi_ctx.io_state) {
+                            return Err(CoreError::Yield);
+                        } else {
+                            continue 'a;
+                        }
+                    }
+                }
+            } else {
+                Ok(to_wasm_return(
+                    p::async_socket::sock_accept(
+                        &mut ctx.wasi_ctx,
+                        mem,
+                        fd,
+                        WasmPtr::from(ro_fd_ptr),
+                    )
                     .await,
-            ))
+                ))
+            }
         } else {
             Err(func_type_miss_match_error())
         }
@@ -2078,7 +2104,7 @@ pub fn poll_oneoff<'a, T>(
             let nsubscriptions = *p3 as u32;
             let revents_num_ptr = *p4 as usize;
 
-            if let Some((dur, s)) = ctx.yield_hook {
+            if let Some((dur, hook)) = ctx.yield_hook {
                 'a: loop {
                     let poll_oneoff_fut = p::async_poll::poll_oneoff(
                         &mut ctx.wasi_ctx,
@@ -2091,7 +2117,7 @@ pub fn poll_oneoff<'a, T>(
                     if let Ok(r) = tokio::time::timeout(dur, poll_oneoff_fut).await {
                         return Ok(to_wasm_return(r));
                     } else {
-                        if s(&ctx.wasi_ctx.io_state) {
+                        if hook(&ctx.wasi_ctx.io_state) {
                             return Err(CoreError::Yield);
                         } else {
                             continue 'a;
