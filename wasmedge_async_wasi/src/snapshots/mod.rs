@@ -301,6 +301,7 @@ pub mod serialize {
     use super::common::net::async_tokio::AsyncWasiSocket;
     use super::common::net::{AddressFamily, SocketType, WasiSocketState};
     use super::common::vfs::{self, INode, WASIRights};
+    use super::env::vfs::WasiPreOpenDir;
     use super::VFD;
     use serde::{Deserialize, Serialize};
 
@@ -457,8 +458,8 @@ pub mod serialize {
         fn into(self) -> WasiSocketState {
             WasiSocketState {
                 sock_type: self.sock_type.clone().into(),
-                local_addr: self.local_addr.clone().map(|s| s.parse().unwrap()),
-                peer_addr: self.peer_addr.clone().map(|s| s.parse().unwrap()),
+                local_addr: self.local_addr.clone().and_then(|s| s.parse().ok()),
+                peer_addr: self.peer_addr.clone().and_then(|s| s.parse().ok()),
                 backlog: self.backlog,
                 shutdown: None,
                 nonblocking: self.nonblocking,
@@ -478,45 +479,146 @@ pub mod serialize {
     }
 
     #[derive(Debug, Clone, Deserialize, Serialize)]
+    pub struct SerialStdin;
+    impl Into<VFD> for SerialStdin {
+        fn into(self) -> VFD {
+            VFD::Inode(INode::Stdin(vfs::WasiStdin))
+        }
+    }
+
+    #[derive(Debug, Clone, Deserialize, Serialize)]
+    pub struct SerialStdout;
+    impl Into<VFD> for SerialStdout {
+        fn into(self) -> VFD {
+            VFD::Inode(INode::Stdout(vfs::WasiStdout))
+        }
+    }
+
+    #[derive(Debug, Clone, Deserialize, Serialize)]
+    pub struct SerialStderr;
+    impl Into<VFD> for SerialStderr {
+        fn into(self) -> VFD {
+            VFD::Inode(INode::Stderr(vfs::WasiStderr))
+        }
+    }
+
+    #[derive(Debug, Clone, Deserialize, Serialize)]
+    pub struct SerialWasiDir;
+    impl Into<VFD> for SerialWasiDir {
+        fn into(self) -> VFD {
+            VFD::Closed
+        }
+    }
+
+    #[derive(Debug, Clone, Deserialize, Serialize)]
+    pub struct SerialWasiFile;
+    impl Into<VFD> for SerialWasiFile {
+        fn into(self) -> VFD {
+            VFD::Closed
+        }
+    }
+
+    #[derive(Debug, Clone, Deserialize, Serialize)]
+    pub struct SerialTcpServer {
+        pub state: SerialWasiSocketState,
+    }
+
+    impl SerialTcpServer {
+        pub fn default_to_async_socket(self) -> std::io::Result<VFD> {
+            let state: WasiSocketState = self.state.into();
+            let addr = state
+                .local_addr
+                .ok_or(std::io::Error::from(std::io::ErrorKind::AddrNotAvailable))?;
+            let backlog = state.backlog.clamp(128, state.backlog);
+            let mut s = AsyncWasiSocket::open(state)?;
+            s.bind(addr)?;
+            s.listen(backlog)?;
+            Ok(VFD::AsyncSocket(s))
+        }
+
+        pub fn to_async_socket_with_std(
+            self,
+            listener: std::net::TcpListener,
+        ) -> std::io::Result<VFD> {
+            let state: WasiSocketState = self.state.into();
+            Ok(VFD::AsyncSocket(AsyncWasiSocket::from_tcplistener(
+                listener, state,
+            )?))
+        }
+    }
+
+    #[derive(Debug, Clone, Deserialize, Serialize)]
+    pub struct SerialUdpSocket {
+        pub state: SerialWasiSocketState,
+    }
+
+    impl SerialUdpSocket {
+        pub fn default_to_async_socket(self) -> std::io::Result<VFD> {
+            let state: WasiSocketState = self.state.into();
+            let addr = state
+                .local_addr
+                .ok_or(std::io::Error::from(std::io::ErrorKind::AddrNotAvailable))?;
+            let mut s = AsyncWasiSocket::open(state)?;
+            s.bind(addr)?;
+            Ok(VFD::AsyncSocket(s))
+        }
+
+        pub fn to_async_socket_with_std(self, socket: std::net::UdpSocket) -> std::io::Result<VFD> {
+            let state: WasiSocketState = self.state.into();
+            Ok(VFD::AsyncSocket(AsyncWasiSocket::from_udpsocket(
+                socket, state,
+            )?))
+        }
+    }
+
+    #[derive(Debug, Clone, Deserialize, Serialize)]
+    pub struct SerialPreOpen {
+        pub guest_path: String,
+        pub dir_rights: u64,
+        pub file_rights: u64,
+    }
+
+    impl SerialPreOpen {
+        pub fn to_vfd(self, host_path: PathBuf) -> VFD {
+            let mut preopen = WasiPreOpenDir::new(host_path, PathBuf::from(self.guest_path));
+            preopen.dir_rights = WASIRights::from_bits_truncate(self.dir_rights);
+            preopen.file_rights = WASIRights::from_bits_truncate(self.file_rights);
+            VFD::Inode(INode::PreOpenDir(preopen))
+        }
+    }
+
+    #[derive(Debug, Clone, Deserialize, Serialize)]
     #[serde(tag = "type")]
     pub enum SerialVFD {
         Empty,
-        Std {
-            fd: u8,
-        },
-        PreOpenDir {
-            guest_path: String,
-            dir_rights: u64,
-            file_rights: u64,
-        },
-        WasiDir,
-        WasiFile,
+        Stdin(SerialStdin),
+        Stdout(SerialStdout),
+        Stderr(SerialStderr),
+        PreOpenDir(SerialPreOpen),
+        WasiDir(SerialWasiDir),
+        WasiFile(SerialWasiFile),
         Closed,
-        TcpServer {
-            state: SerialWasiSocketState,
-        },
-        UdpSocket {
-            state: SerialWasiSocketState,
-        },
+        TcpServer(SerialTcpServer),
+        UdpSocket(SerialUdpSocket),
     }
 
     impl From<&Option<VFD>> for SerialVFD {
         fn from(vfd: &Option<VFD>) -> Self {
             match vfd {
                 Some(VFD::Closed) => Self::Closed,
-                Some(VFD::Inode(INode::Dir(_))) => Self::WasiDir,
-                Some(VFD::Inode(INode::File(_))) => Self::WasiFile,
+                Some(VFD::Inode(INode::Dir(_))) => Self::WasiDir(SerialWasiDir),
+                Some(VFD::Inode(INode::File(_))) => Self::WasiFile(SerialWasiFile),
                 Some(VFD::Inode(INode::PreOpenDir(pre_open))) => {
                     let guest_path = format!("{}", pre_open.guest_path.display());
-                    Self::PreOpenDir {
+                    Self::PreOpenDir(SerialPreOpen {
                         guest_path,
                         dir_rights: pre_open.dir_rights.bits(),
                         file_rights: pre_open.file_rights.bits(),
-                    }
+                    })
                 }
-                Some(VFD::Inode(INode::Stdin(_))) => Self::Std { fd: 0 },
-                Some(VFD::Inode(INode::Stdout(_))) => Self::Std { fd: 1 },
-                Some(VFD::Inode(INode::Stderr(_))) => Self::Std { fd: 2 },
+                Some(VFD::Inode(INode::Stdin(_))) => Self::Stdin(SerialStdin),
+                Some(VFD::Inode(INode::Stdout(_))) => Self::Stdout(SerialStdout),
+                Some(VFD::Inode(INode::Stderr(_))) => Self::Stderr(SerialStderr),
                 Some(VFD::AsyncSocket(AsyncWasiSocket { inner, state })) => match inner {
                     super::common::net::async_tokio::AsyncWasiSocketInner::PreOpen(_) => {
                         Self::Closed
@@ -529,13 +631,13 @@ pub mod serialize {
                             match state.sock_type {
                                 SerialSocketType::TCP4 | SerialSocketType::TCP6 => {
                                     if state.so_accept_conn {
-                                        Self::TcpServer { state }
+                                        Self::TcpServer(SerialTcpServer { state })
                                     } else {
                                         Self::Closed
                                     }
                                 }
                                 SerialSocketType::UDP4 | SerialSocketType::UDP6 => {
-                                    Self::UdpSocket { state }
+                                    Self::UdpSocket(SerialUdpSocket { state })
                                 }
                             }
                         }
@@ -543,62 +645,6 @@ pub mod serialize {
                 },
                 None => Self::Empty,
             }
-        }
-    }
-
-    impl SerialVFD {
-        /// `host_path_map_fn` : return a `host_path` that `guest_path` should to map;
-        pub fn into_vfd<F: Fn(&str) -> PathBuf>(
-            self,
-            host_path_map_fn: &F,
-        ) -> std::io::Result<Option<VFD>> {
-            let vfd = match self {
-                SerialVFD::Empty => None,
-                SerialVFD::Std { fd: 0 } => Some(VFD::Inode(INode::Stdin(vfs::WasiStdin))),
-                SerialVFD::Std { fd: 1 } => Some(VFD::Inode(INode::Stdout(vfs::WasiStdout))),
-                SerialVFD::Std { fd: 2 } => Some(VFD::Inode(INode::Stderr(vfs::WasiStderr))),
-                SerialVFD::Std { .. } => None,
-                SerialVFD::PreOpenDir {
-                    guest_path,
-                    dir_rights,
-                    file_rights,
-                } => {
-                    let mut preopen = vfs::WasiPreOpenDir::new(
-                        host_path_map_fn(&guest_path),
-                        PathBuf::from(guest_path),
-                    );
-                    preopen.dir_rights = vfs::WASIRights::from_bits_truncate(dir_rights);
-                    preopen.file_rights = vfs::WASIRights::from_bits_truncate(file_rights);
-                    Some(VFD::Inode(INode::PreOpenDir(preopen)))
-                }
-                SerialVFD::TcpServer { state } => {
-                    let mut vfd_state: WasiSocketState = state.into();
-                    let local_addr = vfd_state
-                        .local_addr
-                        .ok_or(std::io::Error::from(std::io::ErrorKind::AddrNotAvailable))?;
-                    let backlog = vfd_state.backlog.clamp(128, vfd_state.backlog);
-                    vfd_state.backlog = backlog;
-
-                    let mut async_socket = AsyncWasiSocket::open(vfd_state)?;
-                    async_socket.bind(local_addr)?;
-                    async_socket.listen(backlog)?;
-
-                    Some(VFD::AsyncSocket(async_socket))
-                }
-                SerialVFD::UdpSocket { state } => {
-                    let vfd_state: WasiSocketState = state.into();
-                    let local_addr = vfd_state
-                        .local_addr
-                        .ok_or(std::io::Error::from(std::io::ErrorKind::AddrNotAvailable))?;
-
-                    let mut async_socket = AsyncWasiSocket::open(vfd_state)?;
-                    async_socket.bind(local_addr)?;
-
-                    Some(VFD::AsyncSocket(async_socket))
-                }
-                _ => Some(VFD::Closed),
-            };
-            Ok(vfd)
         }
     }
 
