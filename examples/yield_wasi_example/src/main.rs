@@ -40,8 +40,7 @@ fn single_thread_run<F: Future>(f: F) -> F::Output {
     })
 }
 
-#[allow(unused)]
-mod change_preopen {
+pub mod change_preopen {
     use super::*;
 
     async fn first_run<'a>(
@@ -170,6 +169,7 @@ mod change_preopen {
         log::info!("_start return {:?}", r);
     }
 
+    #[allow(unused)]
     pub async fn run_serial_test() {
         let name = "list_cwd";
         log::info!("run {name}");
@@ -189,8 +189,7 @@ mod change_preopen {
     }
 }
 
-#[allow(unused)]
-mod tcp_listener {
+pub mod tcp_listener {
     use super::*;
 
     async fn first_run<'a>(
@@ -324,6 +323,7 @@ mod tcp_listener {
         log::info!("_start return {:?}", r);
     }
 
+    #[allow(unused)]
     pub async fn run_serial_test() {
         let name = "block_socket";
         log::info!("run {name}");
