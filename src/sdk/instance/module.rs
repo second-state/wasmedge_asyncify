@@ -302,6 +302,8 @@ pub type SyncWasmFn<T> = for<'a> fn(
 pub enum AddFuncError {
     #[error("Found an interior nul byte")]
     NameError(#[from] std::ffi::NulError),
+    #[error("Illegal Async Function name ")]
+    IllegalName,
     #[error("Fail to create Function instance")]
     FunctionCreate,
 }
@@ -497,16 +499,33 @@ impl<T: Send + Sized> ImportModule<T> {
         Ok(())
     }
 
+    /// create a async host function
+    ///
+    /// # Errors
+    /// It will return a error [AddFuncError::IllegalName] if `name` is not start with `async_`.
     pub fn add_async_func(
         &mut self,
         name: &str,
         ty: (Vec<ValType>, Vec<ValType>),
         real_fn: AsyncWasmFn<T>,
     ) -> Result<(), AddFuncError> {
+        if !name.starts_with("async_") {
+            return Err(AddFuncError::IllegalName);
+        }
         unsafe {
             let data_ptr = self.data.as_mut() as *mut T;
             self.add_custom_func(name, ty, wrapper_async_fn::<T>, real_fn as *mut _, data_ptr)
         }
+    }
+
+    pub unsafe fn add_async_func_uncheck(
+        &mut self,
+        name: &str,
+        ty: (Vec<ValType>, Vec<ValType>),
+        real_fn: AsyncWasmFn<T>,
+    ) -> Result<(), AddFuncError> {
+        let data_ptr = self.data.as_mut() as *mut T;
+        self.add_custom_func(name, ty, wrapper_async_fn::<T>, real_fn as *mut _, data_ptr)
     }
 
     pub fn add_sync_func(
