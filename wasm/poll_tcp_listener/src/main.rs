@@ -1,5 +1,4 @@
 use std::io::{self, Read, Write};
-use std::time::SystemTime;
 use std::vec;
 use wasmedge_wasi_socket::poll;
 use wasmedge_wasi_socket::{TcpListener, TcpStream};
@@ -60,14 +59,9 @@ fn connects_to_subscriptions(connects: &Connects) -> Vec<poll::Subscription> {
         if let Some(conn) = conn {
             match conn {
                 NetConn::Server(s) => {
-                    let timeout = SystemTime::now() + std::time::Duration::from_secs(1);
-                    subscriptions.push(poll::Subscription::io(
-                        i as u64,
-                        s,
-                        true,
-                        false,
-                        Some(timeout),
-                    ));
+                    // let timeout = Some(SystemTime::now() + std::time::Duration::from_secs(1));
+                    let timeout = None;
+                    subscriptions.push(poll::Subscription::io(i as u64, s, true, false, timeout));
                 }
                 NetConn::Client(s) => {
                     subscriptions.push(poll::Subscription::io(i as u64, s, true, false, None));
@@ -93,7 +87,7 @@ fn main() -> std::io::Result<()> {
             match connects.get_mut(conn_id) {
                 Some(NetConn::Server(server)) => match event.event_type {
                     poll::EventType::Timeout => {
-                        println!("[wasm] accept(1s) timeout");
+                        println!("[wasm] accept timeout");
                     }
                     poll::EventType::Error(e) => {
                         return Err(e);
