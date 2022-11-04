@@ -1,5 +1,5 @@
 [package]
-name = "async_wasi"
+name = "wasi_async_poll_tcp"
 version = "0.1.0"
 edition = "2021"
 

@@ -30,7 +30,7 @@ async fn main() {
     let loader = Loader::create(&config).unwrap();
 
     // read wasm
-    let wasm = load_wasm_bytes("wasm/poll_tcp_listener.wasm");
+    let wasm = load_wasm_bytes(WASM_PATH);
 
     // load a async wasm from bytes
     let module = loader.load_async_module_from_bytes(&wasm).unwrap();
