@@ -8,7 +8,5 @@ edition = "2021"
 [dependencies]
 wasmedge-asyncify = { path = "../../" }
 tokio = { version = "1", features = ["full"] }
-tokio-stream = "0.1"
-futures = { version = "0.3" }
 log = "0.4"
 simple-log = "1.6"
