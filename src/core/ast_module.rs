@@ -162,3 +162,33 @@ pub fn pass_async_module(wasm: &[u8]) -> Result<Cow<[u8]>, CoreError> {
         .ok_or(CoreError::Load(CoreLoadError::ReadError))?;
     Ok(new_wasm)
 }
+
+pub unsafe fn pass_async_module_with_custom_names<'a, S: AsRef<str>>(
+    wasm: &'a [u8],
+    names: &[S],
+) -> Result<Cow<'a, [u8]>, CoreError> {
+    let mut asyncify_imports = vec![
+        "*.async_*",
+        "wasi_snapshot_preview1.sock_accept",
+        "wasi_snapshot_preview1.sock_connect",
+        "wasi_snapshot_preview1.sock_send",
+        "wasi_snapshot_preview1.sock_send_to",
+        "wasi_snapshot_preview1.sock_recv",
+        "wasi_snapshot_preview1.sock_recv_from",
+        "wasi_snapshot_preview1.sock_lookup_ip",
+        "wasi_snapshot_preview1.poll_oneoff",
+    ];
+
+    let names = names.iter().map(|s| s.as_ref());
+    asyncify_imports.extend(names);
+
+    let mut codegen_config = CodegenConfig::default();
+    codegen_config.optimization_level = 2;
+    codegen_config
+        .pass_argument
+        .push(("asyncify-imports".to_string(), asyncify_imports.join(",")));
+
+    let new_wasm = pass_module(wasm, ["asyncify", "strip"], &codegen_config)
+        .ok_or(CoreError::Load(CoreLoadError::ReadError))?;
+    Ok(new_wasm)
+}
