@@ -37,7 +37,7 @@ async fn run_until_yield<'a>(
         }
     }
     // set io timeout with 5s
-    wasi_import.data.yield_hook = Some((std::time::Duration::from_secs(5), hook));
+    wasi_import.data.yield_hook = Some((std::time::Duration::from_secs(10), hook));
 
     wasi_import
         .push_preopen(".".parse().unwrap(), ".".parse().unwrap())
@@ -166,8 +166,8 @@ async fn main() {
 
     // maybe in a new process.
     // only listener a port, until a new connect.
-    info!("create a new listener on 1235");
-    let listener = std::net::TcpListener::bind("0.0.0.0:1235").unwrap();
+    info!("create a new listener on 1234");
+    let listener = std::net::TcpListener::bind("0.0.0.0:1234").unwrap();
     listener.set_nonblocking(true).unwrap();
     let async_fd = AsyncFd::with_interest(listener, tokio::io::Interest::READABLE).unwrap();
     // wait a new connect, but not accept;
