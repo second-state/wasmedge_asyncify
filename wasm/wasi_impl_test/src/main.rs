@@ -16,6 +16,7 @@ fn main() {
         "et_poll" => et_poll::main_run().unwrap(),
         "sleep" => sleep_test(),
         "list_cwd" => fs::list_cwd(),
+        "tokio_sleep" => tokio_sleep_run(),
         _ => {}
     }
 }
@@ -65,4 +66,29 @@ fn connect_in_progress() {
     cs.set_nonblocking(true).unwrap();
     let e = cs.connect(&addr).unwrap_err();
     assert_eq!(e.raw_os_error(), Some(libc::EINPROGRESS), "{}", e);
+}
+
+fn tokio_sleep_run() {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    runtime.block_on(tokio_sleep());
+}
+
+async fn tokio_sleep() {
+    loop {
+        info!("connect");
+        let timeout = tokio::time::timeout(
+            std::time::Duration::from_secs(1),
+            tokio::time::sleep(std::time::Duration::from_secs(5)),
+        )
+        .await;
+        info!("exit timeout");
+        if let Ok(_) = timeout {
+            break;
+        } else {
+            info!("reconnect");
+        };
+    }
 }
