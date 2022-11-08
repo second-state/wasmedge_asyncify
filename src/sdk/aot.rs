@@ -2,13 +2,117 @@ use std::{
     ops::{Deref, DerefMut},
     path::Path,
 };
+use thiserror::Error;
 
-use wasmedge_sys::ffi;
-use wasmedge_types::{error::WasmEdgeError, CompilerOutputFormat, WasmEdgeResult};
+use crate::{core::pass_module, core::CodegenConfig, error::CoreError, utils, Config};
+use wasmedge_sys_ffi as ffi;
 
-pub use wasmedge_types::CompilerOptimizationLevel;
+/// Defines WasmEdge AOT compiler optimization level.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct CompilerOptimizationLevel(u32);
 
-use crate::{utils, AsyncLinkerBuilder, Config};
+impl CompilerOptimizationLevel {
+    /// Disable as many optimizations as possible.
+    pub const O0: Self = CompilerOptimizationLevel(0);
+
+    /// Optimize quickly without destroying debuggability.
+    pub const O1: Self = CompilerOptimizationLevel(1);
+
+    /// Optimize for fast execution as much as possible without triggering significant incremental compile time or code size growth.
+    pub const O2: Self = CompilerOptimizationLevel(2);
+
+    ///  Optimize for fast execution as much as possible.
+    pub const O3: Self = CompilerOptimizationLevel(3);
+
+    ///  Optimize for small code size as much as possible without triggering
+    ///  significant incremental compile time or execution time slowdowns.
+    #[allow(non_upper_case_globals)]
+    pub const Os: Self = CompilerOptimizationLevel(4);
+
+    /// Optimize for small code size as much as possible.
+    #[allow(non_upper_case_globals)]
+    pub const Oz: Self = CompilerOptimizationLevel(5);
+}
+impl From<u32> for CompilerOptimizationLevel {
+    fn from(val: u32) -> CompilerOptimizationLevel {
+        match val {
+            0 => CompilerOptimizationLevel::O0,
+            1 => CompilerOptimizationLevel::O1,
+            2 => CompilerOptimizationLevel::O2,
+            3 => CompilerOptimizationLevel::O3,
+            4 => CompilerOptimizationLevel::Os,
+            5 => CompilerOptimizationLevel::Oz,
+            _ => panic!("Unknown CompilerOptimizationLevel value: {}", val),
+        }
+    }
+}
+impl From<CompilerOptimizationLevel> for u32 {
+    fn from(val: CompilerOptimizationLevel) -> u32 {
+        val.0
+    }
+}
+impl From<i32> for CompilerOptimizationLevel {
+    fn from(val: i32) -> CompilerOptimizationLevel {
+        match val {
+            0 => CompilerOptimizationLevel::O0,
+            1 => CompilerOptimizationLevel::O1,
+            2 => CompilerOptimizationLevel::O2,
+            3 => CompilerOptimizationLevel::O3,
+            4 => CompilerOptimizationLevel::Os,
+            5 => CompilerOptimizationLevel::Oz,
+            _ => panic!("Unknown CompilerOptimizationLevel value: {}", val),
+        }
+    }
+}
+impl From<CompilerOptimizationLevel> for i32 {
+    fn from(val: CompilerOptimizationLevel) -> i32 {
+        val.0 as i32
+    }
+}
+
+/// Defines WasmEdge AOT compiler output binary format.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CompilerOutputFormat {
+    /// Native dynamic library format.
+    Native,
+
+    /// WebAssembly with AOT compiled codes in custom sections.
+    Wasm,
+}
+impl From<u32> for CompilerOutputFormat {
+    fn from(val: u32) -> CompilerOutputFormat {
+        match val {
+            0 => CompilerOutputFormat::Native,
+            1 => CompilerOutputFormat::Wasm,
+            _ => panic!("Unknown CompilerOutputFormat value: {}", val),
+        }
+    }
+}
+impl From<CompilerOutputFormat> for u32 {
+    fn from(val: CompilerOutputFormat) -> u32 {
+        match val {
+            CompilerOutputFormat::Native => 0,
+            CompilerOutputFormat::Wasm => 1,
+        }
+    }
+}
+impl From<i32> for CompilerOutputFormat {
+    fn from(val: i32) -> CompilerOutputFormat {
+        match val {
+            0 => CompilerOutputFormat::Native,
+            1 => CompilerOutputFormat::Wasm,
+            _ => panic!("Unknown CompilerOutputFormat value: {}", val),
+        }
+    }
+}
+impl From<CompilerOutputFormat> for i32 {
+    fn from(val: CompilerOutputFormat) -> i32 {
+        match val {
+            CompilerOutputFormat::Native => 0,
+            CompilerOutputFormat::Wasm => 1,
+        }
+    }
+}
 
 #[derive(Debug)]
 pub struct AotConfig {
@@ -29,13 +133,13 @@ impl DerefMut for AotConfig {
 }
 
 impl AotConfig {
-    pub fn create() -> WasmEdgeResult<Self> {
+    pub fn create() -> Option<Self> {
         let mut config = AotConfig {
             inner: Config::create()?,
         };
         config.dump_ir(false);
         config.set_aot_compiler_output_format(CompilerOutputFormat::Wasm);
-        Ok(config)
+        Some(config)
     }
 
     /// Sets the optimization level of AOT compiler.
@@ -47,10 +151,7 @@ impl AotConfig {
     /// * `opt_level` - The optimization level of AOT compiler.
     pub fn set_aot_optimization_level(&mut self, opt_level: CompilerOptimizationLevel) {
         unsafe {
-            ffi::WasmEdge_ConfigureCompilerSetOptimizationLevel(
-                self.inner.inner.0,
-                opt_level as u32,
-            )
+            ffi::WasmEdge_ConfigureCompilerSetOptimizationLevel(self.inner.inner.0, opt_level.0)
         }
     }
 
@@ -138,14 +239,14 @@ impl AotConfig {
         unsafe { ffi::WasmEdge_ConfigureCompilerIsInterruptible(self.inner.inner.0) }
     }
 
-    pub fn copy_from(src: &Self) -> WasmEdgeResult<Self> {
+    pub fn copy_from(src: &Self) -> Option<Self> {
         let inner = Config::copy_from(&src.inner)?;
         let mut config = AotConfig { inner };
         config.dump_ir(src.dump_ir_enabled());
         config.generic_binary(src.generic_binary_enabled());
         config.set_aot_compiler_output_format(src.get_aot_compiler_output_format());
         config.set_aot_optimization_level(src.get_aot_optimization_level());
-        Ok(config)
+        Some(config)
     }
 }
 
@@ -161,49 +262,68 @@ impl Drop for InnerCompiler {
 unsafe impl Send for InnerCompiler {}
 unsafe impl Sync for InnerCompiler {}
 
+#[derive(Error, Clone, Debug, PartialEq, Eq)]
+pub enum AotCompileError {
+    #[error("Output path Error")]
+    PathError(#[from] std::ffi::NulError),
+    #[error("{0}")]
+    CoreError(#[from] CoreError),
+    #[error("Pass Asyncify Error")]
+    PassAsyncifyError,
+}
+
 #[derive(Debug)]
 pub struct AotCompiler {
     inner: InnerCompiler,
 }
 
 impl AotCompiler {
-    pub fn create(config: &AotConfig) -> WasmEdgeResult<Self> {
+    pub fn create(config: &AotConfig) -> Option<Self> {
         unsafe {
             let ctx = ffi::WasmEdge_CompilerCreate(config.inner.inner.0);
             if ctx.is_null() {
-                Err(WasmEdgeError::CompilerCreate)
+                None
             } else {
-                Ok(AotCompiler {
+                Some(AotCompiler {
                     inner: InnerCompiler(ctx),
                 })
             }
         }
     }
 
-    pub fn compile<P: AsRef<Path>>(&mut self, in_path: P, out_path: P) -> WasmEdgeResult<()> {
+    pub fn compile<P: AsRef<Path>>(
+        &mut self,
+        wasm_bytes: &[u8],
+        out_path: P,
+    ) -> Result<(), AotCompileError> {
         unsafe {
-            let input = utils::path_to_cstring(in_path.as_ref())?;
             let output = utils::path_to_cstring(out_path.as_ref())?;
 
-            utils::check(ffi::WasmEdge_CompilerCompile(
+            utils::check(ffi::WasmEdge_CompilerCompileFromBuffer(
                 self.inner.0,
-                input.as_ptr(),
+                wasm_bytes.as_ptr(),
+                wasm_bytes.len() as u64,
                 output.as_ptr(),
-            ))
+            ))?;
+            Ok(())
         }
     }
 
     pub fn compile_async_module<P: AsRef<Path>>(
         &mut self,
-        builder: &mut AsyncLinkerBuilder,
         wasm: &[u8],
         out_path: P,
-    ) -> WasmEdgeResult<Option<std::io::Error>> {
-        let new_wasm = builder.pass_asyncify_wasm(wasm)?;
-        if let Err(e) = std::fs::write(&out_path, &new_wasm) {
-            return Ok(Some(e));
-        }
-        self.compile(&out_path, &out_path)?;
-        Ok(None)
+    ) -> Result<(), AotCompileError> {
+        let mut codegen_config = CodegenConfig::default();
+        codegen_config.optimization_level = 2;
+        codegen_config
+            .pass_argument
+            .push(("asyncify-imports".to_string(), "*.async_".to_string()));
+
+        let new_wasm = pass_module(wasm, ["asyncify", "strip"], &codegen_config)
+            .ok_or(AotCompileError::PassAsyncifyError)?;
+
+        self.compile(&new_wasm, &out_path)?;
+        Ok(())
     }
 }

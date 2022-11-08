@@ -1,9 +1,19 @@
+use std::os::raw::c_void;
+
 use crate::core::executor::Executor;
-use crate::core::types::WasmVal;
-use wasmedge_sys::ffi;
-use wasmedge_types::error::{FuncError, WasmEdgeError};
-use wasmedge_types::ValType;
-use wasmedge_types::WasmEdgeResult;
+use crate::core::types::{ValType, WasmVal};
+use crate::error::CoreError;
+use wasmedge_sys_ffi as ffi;
+
+pub(crate) type FnWrapper = unsafe extern "C" fn(
+    key_ptr: *mut c_void,
+    data_ptr: *mut c_void,
+    calling_frame_ctx: *const ffi::WasmEdge_CallingFrameContext,
+    params: *const ffi::WasmEdge_Value,
+    param_len: u32,
+    returns: *mut ffi::WasmEdge_Value,
+    return_len: u32,
+) -> ffi::WasmEdge_Result;
 
 #[derive(Debug, Clone)]
 pub(crate) struct Function {
@@ -11,16 +21,44 @@ pub(crate) struct Function {
 }
 
 impl Function {
+    pub(crate) fn custom_create(
+        ty: (Vec<ValType>, Vec<ValType>),
+        wrapper_fn: FnWrapper,
+        real_fn: *mut c_void,
+        data: *mut c_void,
+    ) -> Option<Self> {
+        unsafe {
+            let ty = FuncType::create(ty.0, ty.1)?;
+            let ctx = ffi::WasmEdge_FunctionInstanceCreateBinding(
+                ty.inner.0,
+                Some(wrapper_fn),
+                real_fn,
+                data.cast(),
+                0,
+            );
+            ty.delete();
+            if ctx.is_null() {
+                None
+            } else {
+                Some(Self {
+                    inner: InnerFunc(ctx),
+                })
+            }
+        }
+    }
+}
+
+impl Function {
     #[allow(dead_code)]
-    pub fn func_type(&self) -> WasmEdgeResult<(Vec<ValType>, Vec<ValType>)> {
+    pub fn func_type(&self) -> Option<(Vec<ValType>, Vec<ValType>)> {
         let ty = unsafe { ffi::WasmEdge_FunctionInstanceGetFunctionType(self.inner.0 as *mut _) };
         if ty.is_null() {
-            Err(WasmEdgeError::Func(FuncError::Type))
+            None
         } else {
             let ty = FuncType {
                 inner: InnerFuncType(ty),
             };
-            Ok((
+            Some((
                 ty.params_type_iter().collect(),
                 ty.returns_type_iter().collect(),
             ))
@@ -28,28 +66,28 @@ impl Function {
     }
 
     #[allow(dead_code)]
-    pub fn func_param_size(&self) -> WasmEdgeResult<usize> {
+    pub fn func_param_size(&self) -> Option<usize> {
         let ty = unsafe { ffi::WasmEdge_FunctionInstanceGetFunctionType(self.inner.0 as *mut _) };
         if ty.is_null() {
-            Err(WasmEdgeError::Func(FuncError::Type))
+            None
         } else {
             let ty = FuncType {
                 inner: InnerFuncType(ty),
             };
-            Ok(ty.params_len() as usize)
+            Some(ty.params_len() as usize)
         }
     }
 
     #[allow(dead_code)]
-    pub fn func_return_size(&self) -> WasmEdgeResult<usize> {
+    pub fn func_return_size(&self) -> Option<usize> {
         let ty = unsafe { ffi::WasmEdge_FunctionInstanceGetFunctionType(self.inner.0 as *mut _) };
         if ty.is_null() {
-            Err(WasmEdgeError::Func(FuncError::Type))
+            None
         } else {
             let ty = FuncType {
                 inner: InnerFuncType(ty),
             };
-            Ok(ty.returns_len() as usize)
+            Some(ty.returns_len() as usize)
         }
     }
 
@@ -77,7 +115,7 @@ impl FuncType {
     pub fn create<I: IntoIterator<Item = ValType>, R: IntoIterator<Item = ValType>>(
         args: I,
         returns: R,
-    ) -> WasmEdgeResult<Self> {
+    ) -> Option<Self> {
         let param_tys = args
             .into_iter()
             .map(|x| x.into())
@@ -95,11 +133,12 @@ impl FuncType {
                 ret_tys.len() as u32,
             )
         };
-        match ctx.is_null() {
-            true => Err(WasmEdgeError::FuncTypeCreate),
-            false => Ok(Self {
+        if ctx.is_null() {
+            None
+        } else {
+            Some(Self {
                 inner: InnerFuncType(ctx),
-            }),
+            })
         }
     }
 
@@ -138,46 +177,6 @@ impl FuncType {
     }
 }
 
-impl From<wasmedge_types::FuncType> for FuncType {
-    fn from(ty: wasmedge_types::FuncType) -> Self {
-        let param_tys: Vec<_> = match ty.args() {
-            Some(args) => args.to_vec(),
-            None => Vec::new(),
-        };
-        let ret_tys: Vec<_> = match ty.returns() {
-            Some(returns) => returns.to_vec(),
-            None => Vec::new(),
-        };
-
-        FuncType::create(param_tys, ret_tys).expect("[wasmedge-sys] Failed to convert wasmedge_types::FuncType into wasmedge_sys::FuncType.")
-    }
-}
-impl From<FuncType> for wasmedge_types::FuncType {
-    fn from(ty: FuncType) -> Self {
-        let args = if ty.params_len() > 0 {
-            let mut args = Vec::with_capacity(ty.params_len() as usize);
-            for ty in ty.params_type_iter() {
-                args.push(ty);
-            }
-            Some(args)
-        } else {
-            None
-        };
-
-        let returns = if ty.returns_len() > 0 {
-            let mut returns = Vec::with_capacity(ty.returns_len() as usize);
-            for ty in ty.returns_type_iter() {
-                returns.push(ty);
-            }
-            Some(returns)
-        } else {
-            None
-        };
-
-        wasmedge_types::FuncType::new(args, returns)
-    }
-}
-
 #[derive(Debug)]
 pub(crate) struct InnerFuncType(pub(crate) *const ffi::WasmEdge_FunctionTypeContext);
 unsafe impl Send for InnerFuncType {}
@@ -189,46 +188,46 @@ pub struct FuncRef {
 }
 
 impl FuncRef {
-    pub fn func_type(&self) -> WasmEdgeResult<(Vec<ValType>, Vec<ValType>)> {
+    pub fn func_type(&self) -> Option<(Vec<ValType>, Vec<ValType>)> {
         let ty = unsafe { ffi::WasmEdge_FunctionInstanceGetFunctionType(self.inner.0 as *mut _) };
         if ty.is_null() {
-            Err(WasmEdgeError::Func(FuncError::Type))
+            None
         } else {
             let ty = FuncType {
                 inner: InnerFuncType(ty),
             };
-            Ok((
+            Some((
                 ty.params_type_iter().collect(),
                 ty.returns_type_iter().collect(),
             ))
         }
     }
 
-    pub fn func_param_size(&self) -> WasmEdgeResult<usize> {
+    pub fn func_param_size(&self) -> Option<usize> {
         let ty = unsafe { ffi::WasmEdge_FunctionInstanceGetFunctionType(self.inner.0 as *mut _) };
         if ty.is_null() {
-            Err(WasmEdgeError::Func(FuncError::Type))
+            None
         } else {
             let ty = FuncType {
                 inner: InnerFuncType(ty),
             };
-            Ok(ty.params_len() as usize)
+            Some(ty.params_len() as usize)
         }
     }
 
-    pub fn func_return_size(&self) -> WasmEdgeResult<usize> {
+    pub fn func_return_size(&self) -> Option<usize> {
         let ty = unsafe { ffi::WasmEdge_FunctionInstanceGetFunctionType(self.inner.0 as *mut _) };
         if ty.is_null() {
-            Err(WasmEdgeError::Func(FuncError::Type))
+            None
         } else {
             let ty = FuncType {
                 inner: InnerFuncType(ty),
             };
-            Ok(ty.returns_len() as usize)
+            Some(ty.returns_len() as usize)
         }
     }
 
-    pub fn call(&self, engine: &mut Executor, args: &[WasmVal]) -> WasmEdgeResult<Vec<WasmVal>> {
+    pub fn call(&self, engine: &Executor, args: &[WasmVal]) -> Result<Vec<WasmVal>, CoreError> {
         engine.run_func_ref(self, args)
     }
 }
