@@ -295,28 +295,56 @@ mod vfs_test {
 
 #[cfg(feature = "serialize")]
 pub mod serialize {
+    use std::net::SocketAddr;
     use std::path::PathBuf;
     use std::time::SystemTime;
 
     use super::common::net::async_tokio::AsyncWasiSocket;
-    use super::common::net::{AddressFamily, SocketType, WasiSocketState};
+    use super::common::net::{AddressFamily, ConnectState, SocketType, WasiSocketState};
     use super::common::vfs::{self, INode, WASIRights};
     use super::env::vfs::WasiPreOpenDir;
     use super::VFD;
     use serde::{Deserialize, Serialize};
 
     #[derive(Debug, Clone, Deserialize, Serialize)]
+    pub enum PollFdState {
+        UdpSocket {
+            fd: i32,
+            socket_type: SerialSocketType,
+            local_addr: Option<SocketAddr>,
+            peer_addr: Option<SocketAddr>,
+            poll_read: bool,
+            poll_write: bool,
+        },
+        TcpListener {
+            fd: i32,
+            socket_type: SerialSocketType,
+            local_addr: Option<SocketAddr>,
+            peer_addr: Option<SocketAddr>,
+            poll_read: bool,
+            poll_write: bool,
+        },
+        TcpStream {
+            fd: i32,
+            socket_type: SerialSocketType,
+            local_addr: Option<SocketAddr>,
+            peer_addr: Option<SocketAddr>,
+            poll_read: bool,
+            poll_write: bool,
+        },
+    }
+
+    #[derive(Debug, Clone, Deserialize, Serialize)]
     pub enum IoState {
         Empty,
         Accept {
-            bind: String,
+            bind: SocketAddr,
         },
         Sleep {
             ddl: SystemTime,
         },
         Poll {
-            udp_binds: Vec<String>,
-            tcp_server_binds: Vec<String>,
+            fds: Vec<PollFdState>,
             ddl: Option<SystemTime>,
         },
     }
@@ -383,7 +411,7 @@ pub mod serialize {
         }
     }
 
-    #[derive(Debug, Clone, Deserialize, Serialize)]
+    #[derive(Debug, Clone, Copy, Deserialize, Serialize)]
     pub enum SerialSocketType {
         TCP4,
         TCP6,
@@ -413,15 +441,42 @@ pub mod serialize {
         }
     }
 
+    #[derive(Debug, Clone, Copy, Deserialize, Serialize)]
+    pub enum SerialConnectState {
+        Empty,
+        Listening,
+        Connected,
+    }
+
+    impl From<ConnectState> for SerialConnectState {
+        fn from(s: ConnectState) -> Self {
+            match s {
+                ConnectState::Empty => Self::Empty,
+                ConnectState::Listening => Self::Listening,
+                ConnectState::Connect => Self::Connected,
+            }
+        }
+    }
+
+    impl Into<ConnectState> for SerialConnectState {
+        fn into(self) -> ConnectState {
+            match self {
+                SerialConnectState::Empty => ConnectState::Empty,
+                SerialConnectState::Listening => ConnectState::Listening,
+                SerialConnectState::Connected => ConnectState::Connect,
+            }
+        }
+    }
+
     #[derive(Debug, Clone, Deserialize, Serialize)]
     pub struct SerialWasiSocketState {
         pub sock_type: SerialSocketType,
-        pub local_addr: Option<String>,
-        pub peer_addr: Option<String>,
+        pub local_addr: Option<SocketAddr>,
+        pub peer_addr: Option<SocketAddr>,
         pub backlog: u32,
         pub nonblocking: bool,
         pub so_reuseaddr: bool,
-        pub so_accept_conn: bool,
+        pub so_conn_state: SerialConnectState,
         pub so_recv_buf_size: usize,
         pub so_send_buf_size: usize,
         pub so_recv_timeout: Option<u64>, // nano_sec
@@ -433,12 +488,12 @@ pub mod serialize {
         fn from(state: &WasiSocketState) -> Self {
             SerialWasiSocketState {
                 sock_type: state.sock_type.into(),
-                local_addr: state.local_addr.map(|addr| addr.to_string()),
-                peer_addr: state.peer_addr.map(|addr| addr.to_string()),
+                local_addr: state.local_addr,
+                peer_addr: state.peer_addr,
                 backlog: state.backlog,
                 nonblocking: state.nonblocking,
                 so_reuseaddr: state.so_reuseaddr,
-                so_accept_conn: state.so_accept_conn,
+                so_conn_state: state.so_conn_state.into(),
                 so_recv_buf_size: state.so_recv_buf_size,
                 so_send_buf_size: state.so_send_buf_size,
                 so_recv_timeout: state.so_recv_timeout.map(|d| d.as_nanos() as u64),
@@ -458,13 +513,13 @@ pub mod serialize {
         fn into(self) -> WasiSocketState {
             WasiSocketState {
                 sock_type: self.sock_type.clone().into(),
-                local_addr: self.local_addr.clone().and_then(|s| s.parse().ok()),
-                peer_addr: self.peer_addr.clone().and_then(|s| s.parse().ok()),
+                local_addr: self.local_addr.clone(),
+                peer_addr: self.peer_addr.clone(),
                 backlog: self.backlog,
                 shutdown: None,
                 nonblocking: self.nonblocking,
                 so_reuseaddr: self.so_reuseaddr,
-                so_accept_conn: self.so_accept_conn,
+                so_conn_state: self.so_conn_state.into(),
                 so_recv_buf_size: self.so_recv_buf_size,
                 so_send_buf_size: self.so_send_buf_size,
                 so_recv_timeout: self
@@ -630,7 +685,8 @@ pub mod serialize {
                             let state: SerialWasiSocketState = state.into();
                             match state.sock_type {
                                 SerialSocketType::TCP4 | SerialSocketType::TCP6 => {
-                                    if state.so_accept_conn {
+                                    if matches!(state.so_conn_state, SerialConnectState::Listening)
+                                    {
                                         Self::TcpServer(SerialTcpServer { state })
                                     } else {
                                         Self::Closed

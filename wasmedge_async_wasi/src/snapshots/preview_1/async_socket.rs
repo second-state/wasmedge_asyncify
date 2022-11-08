@@ -110,7 +110,7 @@ pub async fn sock_accept<M: Memory>(
         if let VFD::AsyncSocket(s) = ctx.get_mut_vfd(fd)? {
             if !s.state.nonblocking && s.state.local_addr.is_some() {
                 ctx.io_state = IoState::Accept {
-                    bind: s.state.local_addr.unwrap().to_string(),
+                    bind: s.state.local_addr.unwrap(),
                 }
             }
         } else {

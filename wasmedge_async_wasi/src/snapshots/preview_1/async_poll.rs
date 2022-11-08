@@ -239,36 +239,68 @@ fn record_state(
     ddl: Option<std::time::SystemTime>,
     fds: &[SubscriptionFd],
 ) -> IoState {
-    let mut udp_binds = vec![];
-    let mut tcp_server_binds = vec![];
+    use crate::snapshots::serialize::PollFdState;
+    let mut save_fds = vec![];
     for fd in fds {
+        let poll_read;
+        let poll_write;
+
+        match fd.type_ {
+            SubscriptionFdType::Read(_) => {
+                poll_read = true;
+                poll_write = false;
+            }
+            SubscriptionFdType::Write(_) => {
+                poll_read = false;
+                poll_write = true;
+            }
+            SubscriptionFdType::Both { .. } => {
+                poll_read = true;
+                poll_write = true;
+            }
+        }
+
         if let Ok(VFD::AsyncSocket(s)) = ctx.get_mut_vfd(fd.fd) {
             match s.state.sock_type.1 {
                 net::SocketType::Datagram => {
-                    if let Ok(addr) = s.get_local() {
-                        udp_binds.push(addr.to_string())
+                    // save
+                    save_fds.push(PollFdState::UdpSocket {
+                        fd: fd.fd,
+                        socket_type: s.state.sock_type.into(),
+                        local_addr: s.get_local().ok(),
+                        peer_addr: s.get_peer().ok(),
+                        poll_read,
+                        poll_write,
+                    })
+                }
+                net::SocketType::Stream if s.state.shutdown.is_none() => {
+                    // save
+                    match s.state.so_conn_state {
+                        net::ConnectState::Empty => {}
+                        net::ConnectState::Listening => save_fds.push(PollFdState::TcpListener {
+                            fd: fd.fd,
+                            socket_type: s.state.sock_type.into(),
+                            local_addr: s.get_local().ok(),
+                            peer_addr: s.get_peer().ok(),
+                            poll_read,
+                            poll_write,
+                        }),
+                        net::ConnectState::Connect => save_fds.push(PollFdState::TcpStream {
+                            fd: fd.fd,
+                            socket_type: s.state.sock_type.into(),
+                            local_addr: s.get_local().ok(),
+                            peer_addr: s.get_peer().ok(),
+                            poll_read,
+                            poll_write,
+                        }),
                     }
                 }
-                net::SocketType::Stream => {
-                    if s.state.so_accept_conn && s.state.shutdown.is_none() {
-                        if let Ok(addr) = s.get_local() {
-                            tcp_server_binds.push(addr.to_string())
-                        }
-                    }
-                }
+                _ => {}
             }
         }
     }
 
-    if udp_binds.is_empty() && tcp_server_binds.is_empty() && ddl.is_none() {
-        IoState::Empty
-    } else {
-        IoState::Poll {
-            udp_binds,
-            tcp_server_binds,
-            ddl,
-        }
-    }
+    IoState::Poll { fds: save_fds, ddl }
 }
 
 pub async fn poll_oneoff<M: Memory>(

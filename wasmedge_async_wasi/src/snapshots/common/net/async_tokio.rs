@@ -221,24 +221,28 @@ impl AsyncWasiSocket {
         if let SocketType::Datagram = self.state.sock_type.1 {
             self.inner.register()?;
         }
-        self.state.local_addr.insert(addr);
+        self.state.local_addr = Some(addr);
         Ok(())
     }
 
     pub fn listen(&mut self, backlog: u32) -> io::Result<()> {
         self.inner.listen(backlog as i32)?;
         self.state.backlog = backlog;
-        self.state.so_accept_conn = true;
+        self.state.so_conn_state = ConnectState::Listening;
         Ok(())
     }
 
     pub async fn accept(&mut self) -> io::Result<Self> {
         let mut new_state = WasiSocketState::default();
         new_state.nonblocking = self.state.nonblocking;
+        new_state.so_conn_state = ConnectState::Connect;
 
         if self.state.nonblocking {
             let (cs, _) = self.inner.accept()?;
             cs.set_nonblocking(true)?;
+            new_state.peer_addr = cs.peer_addr().ok().and_then(|addr| addr.as_socket());
+            new_state.local_addr = cs.local_addr().ok().and_then(|addr| addr.as_socket());
+
             Ok(AsyncWasiSocket {
                 inner: AsyncWasiSocketInner::AsyncFd(AsyncFd::new(cs)?),
                 state: new_state,
@@ -249,6 +253,9 @@ impl AsyncWasiSocket {
                 if let Ok(r) = guard.try_io(|s| {
                     let (cs, _) = s.get_ref().accept()?;
                     cs.set_nonblocking(true)?;
+                    new_state.peer_addr = cs.peer_addr().ok().and_then(|addr| addr.as_socket());
+                    new_state.local_addr = cs.local_addr().ok().and_then(|addr| addr.as_socket());
+
                     Ok(AsyncWasiSocket {
                         inner: AsyncWasiSocketInner::AsyncFd(AsyncFd::new(cs)?),
                         state: new_state,
@@ -264,11 +271,12 @@ impl AsyncWasiSocket {
 
     pub async fn connect(&mut self, addr: net::SocketAddr) -> io::Result<()> {
         let address = SockAddr::from(addr.clone());
+        self.state.so_conn_state = ConnectState::Connect;
+        self.state.peer_addr = Some(addr);
 
         match (self.state.nonblocking, self.state.so_send_timeout) {
             (true, None) => {
                 self.inner.connect(&address)?;
-                self.state.peer_addr = Some(addr);
                 Ok(())
             }
             (false, None) => {
@@ -278,12 +286,8 @@ impl AsyncWasiSocket {
                         _ => return Err(e),
                     }
                     let _ = self.inner.writable().await?;
-                    self.state.peer_addr = Some(addr);
-                    Ok(())
-                } else {
-                    self.state.peer_addr = Some(addr);
-                    Ok(())
                 }
+                Ok(())
             }
             (_, Some(timeout)) => {
                 if let Err(e) = self.inner.connect(&address) {

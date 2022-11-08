@@ -10,8 +10,8 @@ wasmedge_wasi_socket = { version = "0.4.2", git = "https://github.com/second-sta
 [dependencies]
 binaryen = { version = "0.12.1", git = "https://github.com/second-state/binaryen-rs.git", branch = "feat/multi-memories-asyncify" }
 wasmedge-sys-ffi = { version = "0.10", path = "./wasmedge_sys_ffi" }
-wasmedge-async-wasi = { path = "./wasmedge_async_wasi", features = [
-    "serialize",
+wasmedge-async-wasi = { path = "./wasmedge_async_wasi", default-features = false, features = [
+    "async_tokio",
 ] }
 waker-fn = "1"
 chrono = "0.4"
@@ -30,7 +30,8 @@ members = ["examples/*", "wasm/*", "wasmedge_async_wasi/", "wasmedge_sys_ffi/"]
 exclude = ["WasmEdge"]
 
 [features]
-default = ["aot"]
+default = ["aot", "wasi_serialize"]
+wasi_serialize = ["wasmedge-async-wasi/serialize"]
 wasm_ref = []
 aot = []
 ffi = []

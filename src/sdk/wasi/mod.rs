@@ -13,7 +13,9 @@ use wasmedge_async_wasi::snapshots::WasiCtx;
 
 mod memory;
 
+#[cfg(feature = "wasi_serialize")]
 use serialize::IoState;
+#[cfg(feature = "wasi_serialize")]
 pub use wasmedge_async_wasi::snapshots::serialize;
 
 pub struct AsyncWasiCtx {
@@ -22,6 +24,7 @@ pub struct AsyncWasiCtx {
     ///
     /// When `yield_hook` is not `None`, `accept()` and `poll_oneoff()` will wait a `Duration` (yield_hook.0),
     /// if (yield_hook.1) return true, runtime will yield.
+    #[cfg(feature = "wasi_serialize")]
     pub yield_hook: Option<(std::time::Duration, fn(&IoState) -> bool)>,
 }
 pub struct AsyncWasiImport(ImportModule<AsyncWasiCtx>);
@@ -59,6 +62,7 @@ impl AsyncWasiImport {
     pub fn with_wasi_ctx(wasi_ctx: WasiCtx) -> Option<Self> {
         let wasi_ctx = AsyncWasiCtx {
             wasi_ctx,
+            #[cfg(feature = "wasi_serialize")]
             yield_hook: None,
         };
         let mut module = ImportModule::create("wasi_snapshot_preview1", wasi_ctx).ok()?;
@@ -1726,6 +1730,7 @@ pub fn sock_accept<'a, T>(
             let fd = *p1;
             let ro_fd_ptr = *p2 as usize;
 
+            #[cfg(feature = "wasi_serialize")]
             if let Some((dur, hook)) = ctx.yield_hook {
                 'a: loop {
                     let accept_fut = p::async_socket::sock_accept(
@@ -1744,17 +1749,12 @@ pub fn sock_accept<'a, T>(
                         }
                     }
                 }
-            } else {
-                Ok(to_wasm_return(
-                    p::async_socket::sock_accept(
-                        &mut ctx.wasi_ctx,
-                        mem,
-                        fd,
-                        WasmPtr::from(ro_fd_ptr),
-                    )
-                    .await,
-                ))
             }
+
+            Ok(to_wasm_return(
+                p::async_socket::sock_accept(&mut ctx.wasi_ctx, mem, fd, WasmPtr::from(ro_fd_ptr))
+                    .await,
+            ))
         } else {
             Err(func_type_miss_match_error())
         }
@@ -2108,6 +2108,7 @@ pub fn poll_oneoff<'a, T>(
             let nsubscriptions = *p3 as u32;
             let revents_num_ptr = *p4 as usize;
 
+            #[cfg(feature = "wasi_serialize")]
             if let Some((dur, hook)) = ctx.yield_hook {
                 'a: loop {
                     let poll_oneoff_fut = p::async_poll::poll_oneoff(
@@ -2128,19 +2129,19 @@ pub fn poll_oneoff<'a, T>(
                         }
                     }
                 }
-            } else {
-                Ok(to_wasm_return(
-                    p::async_poll::poll_oneoff(
-                        &mut ctx.wasi_ctx,
-                        mem,
-                        WasmPtr::from(in_ptr),
-                        WasmPtr::from(out_ptr),
-                        nsubscriptions,
-                        WasmPtr::from(revents_num_ptr),
-                    )
-                    .await,
-                ))
             }
+
+            Ok(to_wasm_return(
+                p::async_poll::poll_oneoff(
+                    &mut ctx.wasi_ctx,
+                    mem,
+                    WasmPtr::from(in_ptr),
+                    WasmPtr::from(out_ptr),
+                    nsubscriptions,
+                    WasmPtr::from(revents_num_ptr),
+                )
+                .await,
+            ))
         } else {
             Err(func_type_miss_match_error())
         }

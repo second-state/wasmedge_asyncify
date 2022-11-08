@@ -32,6 +32,19 @@ impl Default for SocketType {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum ConnectState {
+    Empty,
+    Listening,
+    Connect,
+}
+
+impl Default for ConnectState {
+    fn default() -> Self {
+        Self::Empty
+    }
+}
+
 #[derive(Debug, Clone, Copy, Default)]
 pub struct WasiSocketState {
     pub sock_type: (AddressFamily, SocketType),
@@ -41,7 +54,7 @@ pub struct WasiSocketState {
     pub shutdown: Option<net::Shutdown>,
     pub nonblocking: bool,
     pub so_reuseaddr: bool,
-    pub so_accept_conn: bool,
+    pub so_conn_state: ConnectState,
     pub so_recv_buf_size: usize,
     pub so_send_buf_size: usize,
     pub so_recv_timeout: Option<Duration>,
