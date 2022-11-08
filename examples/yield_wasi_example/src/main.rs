@@ -274,7 +274,7 @@ pub mod tcp_listener {
                     serialize::SerialVFD::TcpServer(s) => {
                         if let Some(addr) = &s.state.local_addr {
                             use std::net::TcpListener;
-                            if addr == "0.0.0.0:1234" {
+                            if addr.to_string().as_str() == "0.0.0.0:1234" {
                                 let addr = "0.0.0.0:1235";
                                 let listener = TcpListener::bind(&addr).unwrap();
                                 log::info!("listen on 1235");
