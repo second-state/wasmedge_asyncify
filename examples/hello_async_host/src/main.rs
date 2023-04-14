@@ -31,6 +31,7 @@ fn async_sleep<'a>(
 
 #[tokio::main]
 async fn main() {
+    simple_log::quick!("trace");
     let config = Some(Config::create().unwrap());
     let executor = Executor::create(&config).unwrap();
     let mut store = Store::create().unwrap();

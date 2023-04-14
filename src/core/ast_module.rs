@@ -4,6 +4,7 @@ use super::config::Config;
 use crate::error::{CoreCommonError, CoreError, CoreLoadError};
 use crate::utils::check;
 
+use bytes::{Buf, BufMut};
 use wasmedge_sys_ffi as ffi;
 
 pub(crate) type CodegenConfig = binaryen::CodegenConfig;
@@ -107,23 +108,41 @@ pub(crate) fn pass_module<'a, B: AsRef<str>, I: IntoIterator<Item = B>>(
     passes: I,
     codegen_config: &CodegenConfig,
 ) -> Option<Cow<'a, [u8]>> {
-    let mut module = binaryen::Module::read(wasm).ok()?;
+    let module = wasmbin::Module::decode_from(wasm.reader()).ok()?;
+    if has_export(&module, "asyncify_get_state").is_none() {
+        let module = find_malloc::export_malloc(module).ok()?;
+        let mut writer = vec![];
 
-    if module.get_export("asyncify_get_state").unwrap().is_null() {
+        module.encode_into((&mut writer).writer()).ok()?;
+        let mut module = binaryen::Module::read(&writer).ok()?;
         module
             .run_optimization_passes(passes, &codegen_config)
             .ok()?;
-
-        export_all(&mut module);
+        export_all_global(&mut module);
 
         let new_wasm = module.write();
+
         Some(Cow::Owned(new_wasm))
     } else {
         Some(Cow::Borrowed(wasm))
     }
 }
 
-fn export_all(module: &mut binaryen::Module) {
+fn has_export(module: &wasmbin::Module, name: &str) -> Option<()> {
+    use wasmbin::sections::payload;
+    let exports = module
+        .find_std_section::<payload::Export>()?
+        .try_contents()
+        .ok()?;
+    for export in exports {
+        if name == &export.name {
+            return Some(());
+        }
+    }
+    None
+}
+
+fn export_all_global(module: &mut binaryen::Module) {
     use binaryen::ffi as b;
     unsafe {
         let module = module.raw();
@@ -133,8 +152,7 @@ fn export_all(module: &mut binaryen::Module) {
         for i in 0..globle_n {
             let global = b::BinaryenGetGlobalByIndex(module, i);
             let global_name = b::BinaryenGlobalGetName(global);
-            let external_name =
-                std::ffi::CString::new(format!("wasmedge_asyncify_export_global_{}", i)).unwrap();
+            let external_name = std::ffi::CString::new(format!("g{}", i)).unwrap();
             b::BinaryenAddGlobalExport(module, global_name, external_name.as_ptr());
         }
     }

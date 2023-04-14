@@ -32,16 +32,22 @@ pub struct AsyncInstance<'import> {
     _store: std::marker::PhantomData<Store<'import>>,
     executor: Executor,
     inner: InnerInstance,
+    asyncify_stack: i32,
 }
 
 pub struct InstanceSnapshot {
     pub globals: Vec<MutGlobal>,
     pub memories: Vec<(String, Arc<Vec<u8>>)>,
+    pub asyncify_stack: i32,
 }
 
 impl Debug for InstanceSnapshot {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "InstanceRunState{{ globals:{:?}, ", self.globals)?;
+        write!(
+            f,
+            "InstanceRunState{{ asyncify_stack:{}\nglobals:{:?}, ",
+            self.asyncify_stack, self.globals
+        )?;
         write!(f, "memories:{{ ")?;
         for mem in &self.memories {
             write!(f, "({},{}) ", &mem.0, mem.1.len())?;
@@ -58,18 +64,42 @@ impl<'a> AsyncInstance<'a> {
         module: &AstModule,
     ) -> Result<AsyncInstance<'a>, CoreError> {
         let inner = executor.instantiate(&store.inner_store, module)?;
-        Ok(AsyncInstance {
+        let mut async_inner = AsyncInstance {
             _store: Default::default(),
             executor,
             inner,
-        })
+            asyncify_stack: 0,
+        };
+        async_inner
+            .init_asyncify_stack()
+            .map_err(|_| CoreError::Asyncify)?;
+        Ok(async_inner)
+    }
+
+    fn init_asyncify_stack(&mut self) -> Result<(), CallError> {
+        use wasmedge_async_wasi::snapshots::common::memory::{Memory, WasmPtr};
+        log::trace!("init_asyncify_stack");
+        if self.asyncify_stack != 0 {
+            return Ok(());
+        }
+        let malloc_func = self.inner.get_func("malloc")?;
+        let r = malloc_func.call(&self.executor, &[WasmVal::I32(32 * 1024)])?;
+        if let Some(WasmVal::I32(i)) = r.first() {
+            self.asyncify_stack = *i;
+            let mut mem = self.inner.get_memory("memory")?;
+            mem.write_data(WasmPtr::from(*i as usize), [*i + 8, *i + 32 * 1024 - 8])
+                .map_err(|_| CoreError::Asyncify)?;
+            Ok(())
+        } else {
+            Err(CallError::RuntimeError(CoreError::Asyncify))
+        }
     }
 
     #[allow(dead_code)]
     fn asyncify_yield(&mut self) -> Result<(), CallError> {
         log::trace!("asyncify_yield");
         let f = self.inner.get_func("asyncify_start_unwind")?;
-        f.call(&self.executor, &[])?;
+        f.call(&self.executor, &[WasmVal::I32(self.asyncify_stack)])?;
         Ok(())
     }
 
@@ -89,7 +119,8 @@ impl<'a> AsyncInstance<'a> {
             log::trace!("call asyncify_resume");
 
             let f = self.inner.get_func("asyncify_start_rewind")?;
-            self.executor.run_func_ref(&f, &[])?;
+            self.executor
+                .run_func_ref(&f, &[WasmVal::I32(self.asyncify_stack)])?;
         }
         Ok(())
     }
@@ -122,11 +153,19 @@ impl<'a> AsyncInstance<'a> {
             memories.push((name, data));
         }
 
-        InstanceSnapshot { globals, memories }
+        InstanceSnapshot {
+            globals,
+            memories,
+            asyncify_stack: self.asyncify_stack,
+        }
     }
 
     pub fn apply_snapshot(&mut self, snapshot: InstanceSnapshot) -> Result<(), InstanceError> {
-        let InstanceSnapshot { globals, memories } = snapshot;
+        let InstanceSnapshot {
+            globals,
+            memories,
+            asyncify_stack,
+        } = snapshot;
         for g in globals {
             self.inner.set_global(g)?;
         }
@@ -135,6 +174,8 @@ impl<'a> AsyncInstance<'a> {
             mem.write_bytes(data.as_slice(), 0)
                 .map_err(|_| InstanceError::WriteMem(name))?;
         }
+
+        self.asyncify_stack = asyncify_stack;
 
         Ok(())
     }
@@ -174,14 +215,14 @@ pub struct AsyncInstanceRef {
 }
 
 impl AsyncInstanceRef {
-    fn asyncify_yield(&mut self) -> Result<(), CoreError> {
-        log::trace!("asyncify_yield");
+    fn asyncify_yield(&mut self, asyncify_stack: i32) -> Result<(), CoreError> {
+        log::trace!("asyncify_yield {asyncify_stack}");
 
         let f = self
             .inner
             .get_func("asyncify_start_unwind")
             .or_else(|_| Err(CoreError::Asyncify))?;
-        f.call(&self.executor, &[])?;
+        f.call(&self.executor, &[WasmVal::I32(asyncify_stack)])?;
         Ok(())
     }
 
@@ -197,7 +238,7 @@ impl AsyncInstanceRef {
     }
 
     #[allow(dead_code)]
-    fn asyncify_resume(&mut self) -> Result<(), CoreError> {
+    fn asyncify_resume(&mut self, asyncify_stack: i32) -> Result<(), CoreError> {
         log::trace!("asyncify_resume");
 
         if !self.asyncify_is_normal()? {
@@ -207,7 +248,8 @@ impl AsyncInstanceRef {
                 .inner
                 .get_func("asyncify_start_rewind")
                 .or_else(|_| Err(CoreError::Asyncify))?;
-            self.executor.run_func_ref(&f, &[])?;
+            self.executor
+                .run_func_ref(&f, &[WasmVal::I32(asyncify_stack)])?;
         }
         Ok(())
     }
@@ -232,7 +274,7 @@ impl AsInnerInstance for AsyncInstanceRef {
     }
 }
 
-scoped_tls::scoped_thread_local!(static FUT_STORE_RAW_PTR:(Waker,*const c_void));
+scoped_tls::scoped_thread_local!(static FUT_STORE_RAW_PTR:(Waker,*const c_void,i32));
 
 enum FutureReady<'r> {
     Wait(Pin<ResultFuture<'r>>),
@@ -254,6 +296,7 @@ impl<'r, 'inst: 'r> Future for CallFuture<'r, 'inst> {
         mut self: std::pin::Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
     ) -> std::task::Poll<Self::Output> {
+        let asyncify_stack = self.inst.asyncify_stack;
         let CallFuture {
             inst,
             fun_ref,
@@ -269,6 +312,7 @@ impl<'r, 'inst: 'r> Future for CallFuture<'r, 'inst> {
         let s = (
             waker.clone(),
             (fut_store as *const Option<FutureReady>).cast(),
+            asyncify_stack,
         );
 
         let r = FUT_STORE_RAW_PTR.set(&s, || inst.executor.run_func_ref(&fun_ref, args));
@@ -336,10 +380,11 @@ pub(crate) unsafe extern "C" fn wrapper_async_fn<T: Sized + Send>(
 
         let mut mem = Memory::from_raw(main_mem_ctx);
 
-        let (w, ptr) = FUT_STORE_RAW_PTR.with(|(w, ptr)| {
+        let (w, ptr, asyncify_stack) = FUT_STORE_RAW_PTR.with(|(w, ptr, asyncify_stack)| {
             (
                 w.clone(),
                 (*ptr as *mut Option<FutureReady>).as_mut().unwrap(),
+                *asyncify_stack,
             )
         });
         let mut cx = Context::from_waker(&w);
@@ -411,7 +456,7 @@ pub(crate) unsafe extern "C" fn wrapper_async_fn<T: Sized + Send>(
         if fut_is_ready {
             inst.asyncify_normal()?;
         } else {
-            inst.asyncify_yield()?;
+            inst.asyncify_yield(asyncify_stack)?;
         };
         r
     };
