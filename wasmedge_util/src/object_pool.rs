@@ -1,3 +1,5 @@
+use serde::{Deserialize, Serialize};
+
 #[derive(Debug)]
 pub struct ObjectPool<T> {
     stores: Vec<Vec<ObjectNode<T>>>,
@@ -240,6 +242,107 @@ impl<T> ObjectPool<T> {
             .iter_mut()
             .flat_map(|store| store.iter_mut())
             .map(|node| node.obj.as_mut())
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SerialObjectPool<T>(Vec<Vec<SerializeChunk<T>>>);
+
+#[derive(Debug, Serialize, Deserialize)]
+struct SerializeChunk<T> {
+    next_none: usize,
+    next_chunk: usize,
+    values: Vec<T>,
+}
+
+impl<T> SerialObjectPool<T> {
+    pub fn into<U, F: Fn(T) -> U>(self, f: F) -> ObjectPool<U> {
+        let mut pool = ObjectPool {
+            stores: Vec::with_capacity(self.0.len()),
+        };
+
+        for serial_store in self.0 {
+            let stores = pool.extend_stores();
+            let mut chunk_id = 0;
+
+            for serial_chunk in serial_store {
+                let chunk = &mut stores[chunk_id];
+                chunk.header.next_chunk_offset = serial_chunk.next_chunk;
+                chunk.header.next_none_offset = serial_chunk.next_none;
+                for (i, v) in serial_chunk.values.into_iter().enumerate() {
+                    stores[chunk_id + i].obj = Some(f(v));
+                }
+
+                chunk_id = serial_chunk.next_chunk;
+            }
+            if chunk_id == ObjectPool::<U>::DEFAULT_CAPACITY {
+                continue;
+            }
+        }
+
+        pool
+    }
+
+    pub fn from_ref<U, F: Fn(&U) -> T>(pool: &ObjectPool<U>, f: F) -> SerialObjectPool<T> {
+        let skip_end = pool.empty_chunk().map(|(n, _)| n).unwrap_or(0);
+        let stores_len = pool.stores.len();
+        let mut serial_stores = Vec::new();
+        for store in pool.stores[0..(stores_len - skip_end)].iter() {
+            let mut serial_chunks = Vec::new();
+            let mut chunk_index = 0;
+            loop {
+                let node = &store[chunk_index];
+
+                let mut serial_chunk = SerializeChunk {
+                    next_none: node.header.next_none_offset,
+                    next_chunk: node.header.next_chunk_offset,
+                    values: vec![],
+                };
+                for i in chunk_index..node.header.next_none_offset {
+                    serial_chunk.values.push(f(&store[i].obj.as_ref().unwrap()));
+                }
+
+                chunk_index = node.header.next_chunk_offset;
+                serial_chunks.push(serial_chunk);
+                if chunk_index == ObjectPool::<U>::DEFAULT_CAPACITY {
+                    break;
+                }
+            }
+            serial_stores.push(serial_chunks);
+        }
+
+        SerialObjectPool(serial_stores)
+    }
+
+    pub fn from<U, F: Fn(U) -> T>(mut pool: ObjectPool<U>, f: F) -> SerialObjectPool<T> {
+        let skip_end = pool.empty_chunk().map(|(n, _)| n).unwrap_or(0);
+        let stores_len = pool.stores.len();
+        let mut serial_stores = Vec::new();
+        for store in pool.stores[0..(stores_len - skip_end)].iter_mut() {
+            let mut serial_chunks = Vec::new();
+            let mut chunk_index = 0;
+            loop {
+                let chunk_header = store[chunk_index].header;
+
+                let mut serial_chunk = SerializeChunk {
+                    next_none: chunk_header.next_none_offset,
+                    next_chunk: chunk_header.next_chunk_offset,
+                    values: vec![],
+                };
+                for i in chunk_index..chunk_header.next_none_offset {
+                    let v = &mut store[i].obj;
+                    serial_chunk.values.push(f(v.take().unwrap()));
+                }
+                serial_chunks.push(serial_chunk);
+                chunk_index = chunk_header.next_chunk_offset;
+                if chunk_index == ObjectPool::<U>::DEFAULT_CAPACITY {
+                    break;
+                }
+            }
+            serial_stores.push(serial_chunks);
+        }
+
+        SerialObjectPool(serial_stores)
     }
 }
 
@@ -523,5 +626,235 @@ mod tests {
         pool.remove(2);
         pool.cleanup_stores();
         assert_eq!(pool.stores.len(), 1);
+    }
+
+    #[test]
+    fn test_serde() {
+        let mut pool = ObjectPool::new();
+        let cap = ObjectPool::<&str>::DEFAULT_CAPACITY;
+        for i in 0..cap {
+            assert_eq!(pool.push(format!("{i}")), (i, None));
+        }
+        assert_eq!(pool.push("example".to_string()), (cap, None));
+        assert_eq!(pool.push("foo".to_string()), (cap + 1, None));
+        assert_eq!(pool.push("bar".to_string()), (cap + 2, None));
+
+        // fake data
+        {
+            let s = pool.extend_stores();
+            s[0].header.next_none_offset += 1;
+            s[0].obj = Some("fake".to_string());
+        }
+
+        for i in 64..128 {
+            pool.remove(i);
+        }
+
+        for i in 64 + 128..512 {
+            pool.remove(i);
+        }
+
+        let serde_pool = SerialObjectPool::from(pool, |f| f);
+        let s = serde_json::to_string_pretty(&serde_pool).unwrap();
+        let expect = {
+            r#"
+[
+  [
+    {
+      "next_none": 64,
+      "next_chunk": 128,
+      "values": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7",
+        "8",
+        "9",
+        "10",
+        "11",
+        "12",
+        "13",
+        "14",
+        "15",
+        "16",
+        "17",
+        "18",
+        "19",
+        "20",
+        "21",
+        "22",
+        "23",
+        "24",
+        "25",
+        "26",
+        "27",
+        "28",
+        "29",
+        "30",
+        "31",
+        "32",
+        "33",
+        "34",
+        "35",
+        "36",
+        "37",
+        "38",
+        "39",
+        "40",
+        "41",
+        "42",
+        "43",
+        "44",
+        "45",
+        "46",
+        "47",
+        "48",
+        "49",
+        "50",
+        "51",
+        "52",
+        "53",
+        "54",
+        "55",
+        "56",
+        "57",
+        "58",
+        "59",
+        "60",
+        "61",
+        "62",
+        "63"
+      ]
+    },
+    {
+      "next_none": 192,
+      "next_chunk": 512,
+      "values": [
+        "128",
+        "129",
+        "130",
+        "131",
+        "132",
+        "133",
+        "134",
+        "135",
+        "136",
+        "137",
+        "138",
+        "139",
+        "140",
+        "141",
+        "142",
+        "143",
+        "144",
+        "145",
+        "146",
+        "147",
+        "148",
+        "149",
+        "150",
+        "151",
+        "152",
+        "153",
+        "154",
+        "155",
+        "156",
+        "157",
+        "158",
+        "159",
+        "160",
+        "161",
+        "162",
+        "163",
+        "164",
+        "165",
+        "166",
+        "167",
+        "168",
+        "169",
+        "170",
+        "171",
+        "172",
+        "173",
+        "174",
+        "175",
+        "176",
+        "177",
+        "178",
+        "179",
+        "180",
+        "181",
+        "182",
+        "183",
+        "184",
+        "185",
+        "186",
+        "187",
+        "188",
+        "189",
+        "190",
+        "191"
+      ]
+    }
+  ],
+  [
+    {
+      "next_none": 3,
+      "next_chunk": 512,
+      "values": [
+        "example",
+        "foo",
+        "bar"
+      ]
+    }
+  ],
+  [
+    {
+      "next_none": 1,
+      "next_chunk": 512,
+      "values": [
+        "fake"
+      ]
+    }
+  ]
+]"#
+        };
+        assert_eq!(s, expect.trim());
+
+        let new_pool = serde_pool.into(|s| s);
+        assert_eq!(new_pool.stores.len(), 3);
+
+        assert_eq!(
+            new_pool.stores[0][0].header,
+            ChunkHead {
+                next_none_offset: 64,
+                next_chunk_offset: 128
+            }
+        );
+        assert_eq!(
+            new_pool.stores[0][128].header,
+            ChunkHead {
+                next_none_offset: 192,
+                next_chunk_offset: 512
+            }
+        );
+        assert_eq!(
+            new_pool.stores[1][0].header,
+            ChunkHead {
+                next_none_offset: 3,
+                next_chunk_offset: 512
+            }
+        );
+        assert_eq!(
+            new_pool.stores[2][0].header,
+            ChunkHead {
+                next_none_offset: 1,
+                next_chunk_offset: 512
+            }
+        );
     }
 }
