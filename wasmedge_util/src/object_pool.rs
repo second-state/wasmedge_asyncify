@@ -1,5 +1,3 @@
-use std::marker::PhantomData;
-
 #[derive(Debug)]
 pub struct ObjectPool<T> {
     stores: Vec<Vec<ObjectNode<T>>>,
@@ -114,16 +112,11 @@ impl<T> ObjectPool<T> {
         Some(v)
     }
 
-    pub fn cleanup_stores(&mut self) {
-        let chunk_headers: Vec<ChunkHead> = self
-            .stores
-            .iter()
-            .map(|s| s[0].header)
-            .into_iter()
-            .rev()
-            .collect();
+    fn empty_chunk(&self) -> Option<(usize, bool)> {
+        let chunk_headers = self.stores.iter().map(|s| s[0].header).rev();
+
         if chunk_headers.len() <= 1 {
-            return;
+            return None;
         }
 
         let empty_chunk = ChunkHead {
@@ -131,13 +124,33 @@ impl<T> ObjectPool<T> {
             next_chunk_offset: Self::DEFAULT_CAPACITY,
         };
 
-        for (end_chunk, pre_chunk) in chunk_headers.iter().zip(chunk_headers.iter().skip(1)) {
-            if end_chunk == &empty_chunk
-                && pre_chunk.next_chunk_offset != pre_chunk.next_none_offset
-            {
-                self.stores.pop();
+        let mut empty_num = 0;
+        let mut res_chunk_is_full = false;
+
+        for chunk in chunk_headers {
+            if chunk == empty_chunk {
+                empty_num += 1;
             } else {
+                if chunk.next_chunk_offset == chunk.next_none_offset {
+                    res_chunk_is_full = true;
+                }
                 break;
+            }
+        }
+        if empty_num == 0 {
+            None
+        } else {
+            Some((empty_num, res_chunk_is_full))
+        }
+    }
+
+    pub fn cleanup_stores(&mut self) {
+        if let Some((mut n, res_is_full)) = self.empty_chunk() {
+            if res_is_full {
+                n -= 1;
+            }
+            for _ in 0..n {
+                self.stores.pop();
             }
         }
     }
@@ -210,48 +223,23 @@ impl<T: Clone> Clone for ObjectPool<T> {
     }
 }
 
-pub struct ObjectPoolIter<'a, T> {
-    pool: &'a ObjectPool<T>,
-    current_store_index: usize,
-    current_index: usize,
-    _marker: PhantomData<&'a T>,
-}
-
-impl<'a, T> ObjectPoolIter<'a, T> {
-    fn new(pool: &'a ObjectPool<T>) -> Self {
-        ObjectPoolIter {
-            pool,
-            current_store_index: 0,
-            current_index: 0,
-            _marker: PhantomData,
-        }
-    }
-}
-
-impl<'a, T> Iterator for ObjectPoolIter<'a, T> {
-    type Item = Option<&'a T>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        while self.current_store_index < self.pool.stores.len() {
-            let store = &self.pool.stores[self.current_store_index];
-            if self.current_index < store.len() {
-                let item = &store[self.current_index].obj;
-                self.current_index += 1;
-                return Some(item.as_ref());
-            } else {
-                self.current_store_index += 1;
-                self.current_index = 0;
-            }
-        }
-        None
-    }
-}
-
 impl<T> ObjectPool<T> {
-    // ...
+    pub fn iter(&self) -> impl Iterator<Item = Option<&T>> {
+        let skip_end = self.empty_chunk().map(|(n, _)| n).unwrap_or(0);
+        let stores_len = self.stores.len();
+        self.stores[0..(stores_len - skip_end)]
+            .iter()
+            .flat_map(|store| store.iter())
+            .map(|node| node.obj.as_ref())
+    }
 
-    pub fn iter(&self) -> ObjectPoolIter<T> {
-        ObjectPoolIter::new(self)
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = Option<&mut T>> {
+        let skip_end = self.empty_chunk().map(|(n, _)| n).unwrap_or(0);
+        let stores_len = self.stores.len();
+        self.stores[0..(stores_len - skip_end)]
+            .iter_mut()
+            .flat_map(|store| store.iter_mut())
+            .map(|node| node.obj.as_mut())
     }
 }
 
