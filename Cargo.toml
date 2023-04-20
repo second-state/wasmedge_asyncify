@@ -30,7 +30,13 @@ bytes = "1.4.0"
 wat = "1"
 
 [workspace]
-members = ["examples/*", "wasm/*", "wasmedge_async_wasi/", "wasmedge_sys_ffi/"]
+members = [
+    "examples/*",
+    "wasm/*",
+    "wasmedge_async_wasi/",
+    "wasmedge_sys_ffi/",
+    "wasmedge_util/",
+]
 exclude = ["WasmEdge"]
 
 [features]
