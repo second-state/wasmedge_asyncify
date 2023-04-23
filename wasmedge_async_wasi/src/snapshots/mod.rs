@@ -11,6 +11,7 @@ pub struct WasiCtx {
     args: Vec<String>,
     envs: Vec<String>,
     vfs: ObjectPool<VFD>,
+    closed: Option<__wasi_fd_t>,
     vfs_preopen_limit: usize,
     #[cfg(feature = "serialize")]
     pub io_state: serialize::IoState,
@@ -32,6 +33,7 @@ impl WasiCtx {
             envs: vec![],
             vfs,
             vfs_preopen_limit: 2,
+            closed: None,
             #[cfg(feature = "serialize")]
             io_state: serialize::IoState::Empty,
             exit_code: 0,
@@ -54,15 +56,23 @@ impl WasiCtx {
         self.envs.push(format!("{}={}", key, value));
     }
 
+    fn remove_closed(&mut self) {
+        if let Some(closed) = self.closed.take() {
+            let _ = self.remove_vfd(closed);
+        };
+    }
+
     pub fn get_mut_vfd(&mut self, fd: __wasi_fd_t) -> Result<&mut env::VFD, Errno> {
         if fd < 0 {
             Err(Errno::__WASI_ERRNO_BADF)
         } else {
+            self.remove_closed();
             let vfd = self
                 .vfs
                 .get_mut(fd as usize)
                 .ok_or(Errno::__WASI_ERRNO_BADF)?;
             if let VFD::Closed = vfd {
+                let _ = self.closed.insert(fd);
                 return Err(Errno::__WASI_ERRNO_BADF);
             }
             Ok(vfd)
@@ -309,6 +319,7 @@ pub mod serialize {
                 envs,
                 vfs,
                 vfs_preopen_limit,
+                closed: None,
                 io_state,
                 exit_code,
             }
