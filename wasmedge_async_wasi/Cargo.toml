@@ -14,6 +14,7 @@ path-absolutize = "3.0.13"
 socket2 = "0.4.7"
 futures = { version = "0.3" }
 serde = { version = "1", features = ["derive"], optional = true }
+wasmedge_util = { path = "../wasmedge_util" }
 
 [dev-dependencies]
 serde_json = { version = "1" }

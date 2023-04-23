@@ -110,33 +110,19 @@ pub mod change_preopen {
         let executor = Executor::create(&config).unwrap();
         let mut store = Store::create().unwrap();
 
-        let mut vfs = vec![];
-        {
-            for s_fd in &wasi_ctx_snapshot.vfs {
-                let fd = match s_fd {
-                    serialize::SerialVFD::Empty => None,
-                    serialize::SerialVFD::Stdin(s) => Some(s.clone().into()),
-                    serialize::SerialVFD::Stdout(s) => Some(s.clone().into()),
-                    serialize::SerialVFD::Stderr(s) => Some(s.clone().into()),
+        let wasi_ctx = wasi_ctx_snapshot.resume(|s_fd| match s_fd {
+            serialize::SerialVFD::Stdin(s) => s.clone().into(),
+            serialize::SerialVFD::Stdout(s) => s.clone().into(),
+            serialize::SerialVFD::Stderr(s) => s.clone().into(),
 
-                    serialize::SerialVFD::PreOpenDir(dir) => match dir.guest_path.as_str() {
-                        "." => Some(dir.clone().to_vfd(PathBuf::from("./wasm"))),
-                        _ => None,
-                    },
-                    serialize::SerialVFD::TcpServer(s) => {
-                        Some(s.clone().default_to_async_socket().unwrap())
-                    }
-                    serialize::SerialVFD::UdpSocket(s) => {
-                        Some(s.clone().default_to_async_socket().unwrap())
-                    }
-                    _ => Some(wasi::snapshots::env::VFD::Closed),
-                };
-
-                vfs.push(fd);
-            }
-        }
-
-        let wasi_ctx = (wasi_ctx_snapshot, vfs).into();
+            serialize::SerialVFD::PreOpenDir(dir) => match dir.guest_path.as_str() {
+                "." => dir.clone().to_vfd(PathBuf::from("./wasm")),
+                _ => wasi::snapshots::env::VFD::Closed,
+            },
+            serialize::SerialVFD::TcpServer(s) => s.clone().default_to_async_socket().unwrap(),
+            serialize::SerialVFD::UdpSocket(s) => s.clone().default_to_async_socket().unwrap(),
+            _ => wasi::snapshots::env::VFD::Closed,
+        });
         let mut wasi_import =
             wasmedge_asyncify::wasi::AsyncWasiImport::with_wasi_ctx(wasi_ctx).unwrap();
         wasi_import.push_arg(name.to_string());
@@ -258,45 +244,33 @@ pub mod tcp_listener {
         let executor = Executor::create(&config).unwrap();
         let mut store = Store::create().unwrap();
 
-        let mut vfs = vec![];
-        {
-            for s_fd in &wasi_ctx_snapshot.vfs {
-                let fd = match s_fd {
-                    serialize::SerialVFD::Empty => None,
-                    serialize::SerialVFD::Stdin(s) => Some(s.clone().into()),
-                    serialize::SerialVFD::Stdout(s) => Some(s.clone().into()),
-                    serialize::SerialVFD::Stderr(s) => Some(s.clone().into()),
+        let wasi_ctx = wasi_ctx_snapshot.resume(|s_fd| match s_fd {
+            serialize::SerialVFD::Stdin(s) => s.clone().into(),
+            serialize::SerialVFD::Stdout(s) => s.clone().into(),
+            serialize::SerialVFD::Stderr(s) => s.clone().into(),
 
-                    serialize::SerialVFD::PreOpenDir(dir) => match dir.guest_path.as_str() {
-                        "." => Some(dir.clone().to_vfd(PathBuf::from("."))),
-                        _ => None,
-                    },
-                    serialize::SerialVFD::TcpServer(s) => {
-                        if let Some(addr) = &s.state.local_addr {
-                            use std::net::TcpListener;
-                            if addr.to_string().as_str() == "0.0.0.0:1234" {
-                                let addr = "0.0.0.0:1235";
-                                let listener = TcpListener::bind(&addr).unwrap();
-                                log::info!("listen on 1235");
-                                Some(s.clone().to_async_socket_with_std(listener).unwrap())
-                            } else {
-                                Some(s.clone().default_to_async_socket().unwrap())
-                            }
-                        } else {
-                            Some(s.clone().default_to_async_socket().unwrap())
-                        }
+            serialize::SerialVFD::PreOpenDir(dir) => match dir.guest_path.as_str() {
+                "." => dir.clone().to_vfd(PathBuf::from(".")),
+                _ => wasi::snapshots::env::VFD::Closed,
+            },
+            serialize::SerialVFD::TcpServer(s) => {
+                if let Some(addr) = &s.state.local_addr {
+                    use std::net::TcpListener;
+                    if addr.to_string().as_str() == "0.0.0.0:1234" {
+                        let addr = "0.0.0.0:1235";
+                        let listener = TcpListener::bind(&addr).unwrap();
+                        log::info!("listen on 1235");
+                        s.clone().to_async_socket_with_std(listener).unwrap()
+                    } else {
+                        s.clone().default_to_async_socket().unwrap()
                     }
-                    serialize::SerialVFD::UdpSocket(s) => {
-                        Some(s.clone().default_to_async_socket().unwrap())
-                    }
-                    _ => Some(wasi::snapshots::env::VFD::Closed),
-                };
-
-                vfs.push(fd);
+                } else {
+                    s.clone().default_to_async_socket().unwrap()
+                }
             }
-        }
-
-        let wasi_ctx = (wasi_ctx_snapshot, vfs).into();
+            serialize::SerialVFD::UdpSocket(s) => s.clone().default_to_async_socket().unwrap(),
+            _ => wasi::snapshots::env::VFD::Closed,
+        });
         let mut wasi_import =
             wasmedge_asyncify::wasi::AsyncWasiImport::with_wasi_ctx(wasi_ctx).unwrap();
         wasi_import.push_arg(name.to_string());

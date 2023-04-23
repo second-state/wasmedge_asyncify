@@ -83,48 +83,35 @@ async fn resume_and_run(
     let mut store = Store::create().unwrap();
 
     // resume wasi
-    let mut vfs = vec![];
-    {
-        let listen_addr = match &wasi_ctx_snapshot.io_state {
-            IoState::Accept { bind } => Some(bind.clone()),
-            _ => None,
-        };
 
-        let mut listener = Some(listener);
+    let listen_addr = match &wasi_ctx_snapshot.io_state {
+        IoState::Accept { bind } => Some(bind.clone()),
+        _ => None,
+    };
 
-        for s_fd in &wasi_ctx_snapshot.vfs {
-            let fd = match s_fd {
-                serialize::SerialVFD::Empty => None,
-                serialize::SerialVFD::Stdin(s) => Some(s.clone().into()),
-                serialize::SerialVFD::Stdout(s) => Some(s.clone().into()),
-                serialize::SerialVFD::Stderr(s) => Some(s.clone().into()),
+    let mut listener = Some(listener);
 
-                serialize::SerialVFD::PreOpenDir(dir) => match dir.guest_path.as_str() {
-                    "." => Some(dir.clone().to_vfd(PathBuf::from("."))),
-                    _ => None,
-                },
-                serialize::SerialVFD::TcpServer(s) => {
-                    if s.state.local_addr == listen_addr && listener.is_some() {
-                        Some(
-                            s.clone()
-                                .to_async_socket_with_std(listener.take().unwrap())
-                                .unwrap(),
-                        )
-                    } else {
-                        Some(s.clone().default_to_async_socket().unwrap())
-                    }
-                }
-                serialize::SerialVFD::UdpSocket(s) => {
-                    Some(s.clone().default_to_async_socket().unwrap())
-                }
-                _ => Some(wasi::snapshots::env::VFD::Closed),
-            };
+    let wasi_ctx = wasi_ctx_snapshot.resume(|s_fd| match s_fd {
+        serialize::SerialVFD::Stdin(s) => s.clone().into(),
+        serialize::SerialVFD::Stdout(s) => s.clone().into(),
+        serialize::SerialVFD::Stderr(s) => s.clone().into(),
 
-            vfs.push(fd);
+        serialize::SerialVFD::PreOpenDir(dir) => match dir.guest_path.as_str() {
+            "." => dir.clone().to_vfd(PathBuf::from(".")),
+            _ => wasi::snapshots::env::VFD::Closed,
+        },
+        serialize::SerialVFD::TcpServer(s) => {
+            if s.state.local_addr == listen_addr && listener.is_some() {
+                s.clone()
+                    .to_async_socket_with_std(listener.take().unwrap())
+                    .unwrap()
+            } else {
+                s.clone().default_to_async_socket().unwrap()
+            }
         }
-    }
-
-    let wasi_ctx = (wasi_ctx_snapshot, vfs).into();
+        serialize::SerialVFD::UdpSocket(s) => s.clone().default_to_async_socket().unwrap(),
+        _ => wasi::snapshots::env::VFD::Closed,
+    });
     let mut wasi_import =
         wasmedge_asyncify::wasi::AsyncWasiImport::with_wasi_ctx(wasi_ctx).unwrap();
 

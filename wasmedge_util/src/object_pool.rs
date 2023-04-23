@@ -245,10 +245,10 @@ impl<T> ObjectPool<T> {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SerialObjectPool<T>(Vec<Vec<SerializeChunk<T>>>);
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 struct SerializeChunk<T> {
     next_none: usize,
     next_chunk: usize,
@@ -256,7 +256,7 @@ struct SerializeChunk<T> {
 }
 
 impl<T> SerialObjectPool<T> {
-    pub fn into<U, F: Fn(T) -> U>(self, f: F) -> ObjectPool<U> {
+    pub fn into<U, F: FnMut(T) -> U>(self, mut f: F) -> ObjectPool<U> {
         let mut pool = ObjectPool {
             stores: Vec::with_capacity(self.0.len()),
         };
@@ -283,7 +283,7 @@ impl<T> SerialObjectPool<T> {
         pool
     }
 
-    pub fn from_ref<U, F: Fn(&U) -> T>(pool: &ObjectPool<U>, f: F) -> SerialObjectPool<T> {
+    pub fn from_ref<U, F: FnMut(&U) -> T>(pool: &ObjectPool<U>, mut f: F) -> SerialObjectPool<T> {
         let skip_end = pool.empty_chunk().map(|(n, _)| n).unwrap_or(0);
         let stores_len = pool.stores.len();
         let mut serial_stores = Vec::new();
@@ -314,7 +314,7 @@ impl<T> SerialObjectPool<T> {
         SerialObjectPool(serial_stores)
     }
 
-    pub fn from<U, F: Fn(U) -> T>(mut pool: ObjectPool<U>, f: F) -> SerialObjectPool<T> {
+    pub fn from<U, F: FnMut(U) -> T>(mut pool: ObjectPool<U>, mut f: F) -> SerialObjectPool<T> {
         let skip_end = pool.empty_chunk().map(|(n, _)| n).unwrap_or(0);
         let stores_len = pool.stores.len();
         let mut serial_stores = Vec::new();
