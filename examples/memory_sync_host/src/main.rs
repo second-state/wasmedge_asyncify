@@ -75,7 +75,7 @@ async fn main() {
     let module = loader.load_async_module_from_bytes(&wasm).unwrap();
 
     // instance wasm
-    let mut inst = AsyncInstance::instance(executor, &mut store, &module).unwrap();
+    let mut inst = AsyncInstance::instance(executor, store, &module).unwrap();
 
     // call _start function
     println!("call _start");

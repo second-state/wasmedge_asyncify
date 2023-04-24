@@ -78,7 +78,7 @@ async fn run_until_yield(async_wasm: &[u8]) -> (InstanceSnapshot, Box<ResumeAble
     let module = loader.load_async_module_from_bytes(async_wasm).unwrap();
 
     // instance wasm
-    let mut inst = AsyncInstance::instance(executor, &mut store, &module).unwrap();
+    let mut inst = AsyncInstance::instance(executor, store, &module).unwrap();
 
     // call _start function
     info!("first run inst");
@@ -116,7 +116,7 @@ async fn resume_wasm(async_wasm: &[u8], snapshot: InstanceSnapshot, data: Resume
     let module = loader.load_async_module_from_bytes(async_wasm).unwrap();
 
     // instance wasm
-    let mut inst = AsyncInstance::instance(executor, &mut store, &module).unwrap();
+    let mut inst = AsyncInstance::instance(executor, store, &module).unwrap();
     info!("resume inst state");
     inst.apply_snapshot(snapshot).unwrap();
 

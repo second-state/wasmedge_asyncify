@@ -29,7 +29,7 @@ pub enum CallError {
 }
 
 pub struct AsyncInstance<'import> {
-    _store: std::marker::PhantomData<Store<'import>>,
+    store: Store<'import>,
     executor: Executor,
     inner: InnerInstance,
     asyncify_stack: i32,
@@ -60,12 +60,12 @@ impl Debug for InstanceSnapshot {
 impl<'a> AsyncInstance<'a> {
     pub fn instance(
         executor: Executor,
-        store: &'a mut Store<'a>,
+        store: Store<'a>,
         module: &AstModule,
     ) -> Result<AsyncInstance<'a>, CoreError> {
         let inner = executor.instantiate(&store.inner_store, module)?;
         let mut async_inner = AsyncInstance {
-            _store: Default::default(),
+            store,
             executor,
             inner,
             asyncify_stack: 0,
@@ -203,9 +203,11 @@ impl<'a> AsyncInstance<'a> {
         f
     }
 
-    pub fn unpack(self) -> Executor {
-        let Self { executor, .. } = self;
-        executor
+    pub fn unpack(self) -> (Executor, Store<'a>) {
+        let Self {
+            executor, store, ..
+        } = self;
+        (executor, store)
     }
 }
 

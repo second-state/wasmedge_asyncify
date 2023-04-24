@@ -71,7 +71,7 @@ async fn run_wasi_test(name: &str) {
 
     // instance wasm
     log::info!("instance");
-    let mut inst = AsyncInstance::instance(executor, &mut store, &module).unwrap();
+    let mut inst = AsyncInstance::instance(executor, store, &module).unwrap();
 
     // call _start function
     log::info!("call _start");

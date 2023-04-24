@@ -75,7 +75,7 @@ async fn run_wasm<'a>(
         .unwrap();
 
     // instance wasm
-    let mut inst = AsyncInstance::instance(executor, &mut store, &ast_module).unwrap();
+    let mut inst = AsyncInstance::instance(executor, store, &ast_module).unwrap();
     if let Some(s) = snapshot {
         inst.apply_snapshot(s).unwrap();
     }

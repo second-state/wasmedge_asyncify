@@ -79,7 +79,7 @@ pub mod change_preopen {
             .unwrap();
         // instance wasm
         log::info!("instance");
-        let mut inst = AsyncInstance::instance(executor, &mut store, &ast_module).unwrap();
+        let mut inst = AsyncInstance::instance(executor, store, &ast_module).unwrap();
 
         // call _start function
         log::info!("first_run call _start");
@@ -144,7 +144,7 @@ pub mod change_preopen {
             .unwrap();
         // instance wasm
         log::info!("instance");
-        let mut inst = AsyncInstance::instance(executor, &mut store, &ast_module).unwrap();
+        let mut inst = AsyncInstance::instance(executor, store, &ast_module).unwrap();
 
         log::info!("resume from snapshot");
         inst.apply_snapshot(snapshot).unwrap();
@@ -215,7 +215,7 @@ pub mod tcp_listener {
             .unwrap();
         // instance wasm
         log::info!("instance");
-        let mut inst = AsyncInstance::instance(executor, &mut store, &ast_module).unwrap();
+        let mut inst = AsyncInstance::instance(executor, store, &ast_module).unwrap();
 
         // call _start function
         log::info!("first_run call _start");
@@ -286,7 +286,7 @@ pub mod tcp_listener {
             .unwrap();
         // instance wasm
         log::info!("instance");
-        let mut inst = AsyncInstance::instance(executor, &mut store, &ast_module).unwrap();
+        let mut inst = AsyncInstance::instance(executor, store, &ast_module).unwrap();
 
         log::info!("resume from snapshot");
         inst.apply_snapshot(snapshot).unwrap();

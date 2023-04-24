@@ -53,7 +53,7 @@ async fn run_until_yield<'a>(
         .unwrap();
 
     // instance wasm
-    let mut inst = AsyncInstance::instance(executor, &mut store, &ast_module).unwrap();
+    let mut inst = AsyncInstance::instance(executor, store, &ast_module).unwrap();
 
     // call _start function
     log::info!("first call _start");
@@ -124,7 +124,7 @@ async fn resume_and_run(
         .load_async_module_from_bytes(asyncify_wasm_bytes)
         .unwrap();
     // instance wasm
-    let mut inst = AsyncInstance::instance(executor, &mut store, &ast_module).unwrap();
+    let mut inst = AsyncInstance::instance(executor, store, &ast_module).unwrap();
 
     log::info!("resume inst");
     inst.apply_snapshot(snapshot).unwrap();
