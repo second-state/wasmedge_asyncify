@@ -304,7 +304,11 @@ impl AsyncWasiSocket {
                         Some(libc::EINPROGRESS) => {}
                         _ => return Err(e),
                     }
-                    let _ = self.inner.writable().await?;
+                    let s = self.inner.writable().await?;
+                    let e = s.get_inner().take_error()?;
+                    if let Some(e) = e {
+                        return Err(e);
+                    }
                 }
                 Ok(())
             }
@@ -316,14 +320,16 @@ impl AsyncWasiSocket {
                     }
                     match tokio::time::timeout(timeout, self.inner.writable()).await {
                         Ok(r) => {
-                            let _ = r?;
-                            self.state.peer_addr = Some(addr);
+                            let s = r?;
+                            let e = s.get_inner().take_error()?;
+                            if let Some(e) = e {
+                                return Err(e);
+                            }
                             Ok(())
                         }
                         Err(e) => Err(io::Error::from_raw_os_error(libc::EWOULDBLOCK)),
                     }
                 } else {
-                    self.state.peer_addr = Some(addr);
                     Ok(())
                 }
             }
