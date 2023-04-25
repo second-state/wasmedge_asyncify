@@ -48,6 +48,13 @@ impl AsyncWasiSocketInner {
         }
     }
 
+    fn bind_device(&mut self, interface: Option<&[u8]>) -> io::Result<()> {
+        match self {
+            AsyncWasiSocketInner::PreOpen(s) => s.bind_device(interface),
+            AsyncWasiSocketInner::AsyncFd(s) => s.get_ref().bind_device(interface),
+        }
+    }
+
     fn listen(&mut self, backlog: i32) -> io::Result<()> {
         match self {
             AsyncWasiSocketInner::PreOpen(s) => {
@@ -208,6 +215,9 @@ impl AsyncWasiSocket {
             }
         };
         inner.set_nonblocking(true)?;
+        if !state.bind_device.is_empty() {
+            inner.bind_device(Some(&state.bind_device))?;
+        }
         Ok(AsyncWasiSocket {
             inner: AsyncWasiSocketInner::PreOpen(inner),
             state,
@@ -222,6 +232,15 @@ impl AsyncWasiSocket {
             self.inner.register()?;
         }
         self.state.local_addr = Some(addr);
+        Ok(())
+    }
+
+    pub fn bind_device(&mut self, interface: Option<&[u8]>) -> io::Result<()> {
+        self.inner.bind_device(interface)?;
+        self.state.bind_device = match interface {
+            Some(interface) => interface.to_vec(),
+            None => vec![],
+        };
         Ok(())
     }
 
@@ -258,7 +277,7 @@ impl AsyncWasiSocket {
 
                     Ok(AsyncWasiSocket {
                         inner: AsyncWasiSocketInner::AsyncFd(AsyncFd::new(cs)?),
-                        state: new_state,
+                        state: new_state.clone(),
                     })
                 }) {
                     return r;

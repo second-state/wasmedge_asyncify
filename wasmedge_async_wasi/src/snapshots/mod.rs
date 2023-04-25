@@ -388,6 +388,7 @@ pub mod serialize {
         pub sock_type: SerialSocketType,
         pub local_addr: Option<SocketAddr>,
         pub peer_addr: Option<SocketAddr>,
+        pub bind_device: Vec<u8>,
         pub backlog: u32,
         pub nonblocking: bool,
         pub so_reuseaddr: bool,
@@ -405,6 +406,7 @@ pub mod serialize {
                 sock_type: state.sock_type.into(),
                 local_addr: state.local_addr,
                 peer_addr: state.peer_addr,
+                bind_device: state.bind_device.clone(),
                 backlog: state.backlog,
                 nonblocking: state.nonblocking,
                 so_reuseaddr: state.so_reuseaddr,
@@ -420,7 +422,26 @@ pub mod serialize {
 
     impl Into<WasiSocketState> for SerialWasiSocketState {
         fn into(self) -> WasiSocketState {
-            (&self).into()
+            WasiSocketState {
+                sock_type: self.sock_type.into(),
+                local_addr: self.local_addr,
+                peer_addr: self.peer_addr,
+                bind_device: self.bind_device,
+                backlog: self.backlog,
+                shutdown: None,
+                nonblocking: self.nonblocking,
+                so_reuseaddr: self.so_reuseaddr,
+                so_conn_state: self.so_conn_state.into(),
+                so_recv_buf_size: self.so_recv_buf_size,
+                so_send_buf_size: self.so_send_buf_size,
+                so_recv_timeout: self
+                    .so_recv_timeout
+                    .map(|d| std::time::Duration::from_nanos(d)),
+                so_send_timeout: self
+                    .so_send_timeout
+                    .map(|d| std::time::Duration::from_nanos(d)),
+                fs_rights: WASIRights::from_bits_truncate(self.fs_rights),
+            }
         }
     }
 
@@ -430,6 +451,7 @@ pub mod serialize {
                 sock_type: self.sock_type.clone().into(),
                 local_addr: self.local_addr.clone(),
                 peer_addr: self.peer_addr.clone(),
+                bind_device: self.bind_device.clone(),
                 backlog: self.backlog,
                 shutdown: None,
                 nonblocking: self.nonblocking,

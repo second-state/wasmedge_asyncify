@@ -83,6 +83,27 @@ pub fn sock_bind<M: Memory>(
     }
 }
 
+pub fn sock_bind_device<M: Memory>(
+    ctx: &mut WasiCtx,
+    mem: &mut M,
+    fd: __wasi_fd_t,
+    name_ptr: WasmPtr<u8>,
+    name_len: __wasi_size_t,
+) -> Result<(), Errno> {
+    let sock_fd = ctx.get_mut_vfd(fd)?;
+    let name = mem.get_slice(name_ptr, name_len as usize)?;
+    if let VFD::AsyncSocket(s) = sock_fd {
+        if name_ptr.0 != 0 {
+            s.bind_device(Some(name))?;
+        } else {
+            s.bind_device(None)?;
+        }
+        Ok(())
+    } else {
+        Err(Errno::__WASI_ERRNO_NOTSOCK)
+    }
+}
+
 pub fn sock_listen<M: Memory>(
     ctx: &mut WasiCtx,
     _mem: &mut M,

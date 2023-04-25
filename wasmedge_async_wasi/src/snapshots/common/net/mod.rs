@@ -45,11 +45,12 @@ impl Default for ConnectState {
     }
 }
 
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct WasiSocketState {
     pub sock_type: (AddressFamily, SocketType),
     pub local_addr: Option<net::SocketAddr>,
     pub peer_addr: Option<net::SocketAddr>,
+    pub bind_device: Vec<u8>,
     pub backlog: u32,
     pub shutdown: Option<net::Shutdown>,
     pub nonblocking: bool,
