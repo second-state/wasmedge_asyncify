@@ -2,7 +2,7 @@ use std::ops::{Deref, DerefMut};
 use std::path::PathBuf;
 
 use crate::error::{CoreError, CoreExecutionError};
-use crate::module::ResultFuture;
+use crate::module::{AsyncWasmFn, ResultFuture, SyncWasmFn};
 use crate::types::{ValType, WasmVal};
 use crate::{types, ImportModule, Memory};
 pub use wasmedge_async_wasi::snapshots;
@@ -54,9 +54,563 @@ fn func_type_miss_match_error() -> CoreError {
 #[derive(Debug)]
 pub struct NotDirError;
 
+pub enum WasiFunc {
+    SyncFn(
+        String,
+        (Vec<ValType>, Vec<ValType>),
+        SyncWasmFn<AsyncWasiCtx>,
+    ),
+    AsyncFn(
+        String,
+        (Vec<ValType>, Vec<ValType>),
+        AsyncWasmFn<AsyncWasiCtx>,
+    ),
+}
+
 impl AsyncWasiImport {
     pub fn new() -> Option<Self> {
         Self::with_wasi_ctx(WasiCtx::new())
+    }
+
+    pub fn wasi_impls() -> Vec<WasiFunc> {
+        macro_rules! sync_fn {
+            ($name:expr,$ty:expr,$f:ident) => {
+                WasiFunc::SyncFn($name.into(), $ty, $f)
+            };
+        }
+        macro_rules! async_fn {
+            ($name:expr,$ty:expr,$f:ident) => {
+                WasiFunc::AsyncFn($name.into(), $ty, $f)
+            };
+        }
+        let module = vec![
+            sync_fn!(
+                "args_get",
+                (vec![ValType::I32, ValType::I32], vec![ValType::I32]),
+                args_get
+            ),
+            sync_fn!(
+                "args_sizes_get",
+                (vec![ValType::I32, ValType::I32], vec![ValType::I32]),
+                args_sizes_get
+            ),
+            sync_fn!(
+                "environ_get",
+                (vec![ValType::I32, ValType::I32], vec![ValType::I32]),
+                environ_get
+            ),
+            sync_fn!(
+                "environ_sizes_get",
+                (vec![ValType::I32, ValType::I32], vec![ValType::I32]),
+                environ_sizes_get
+            ),
+            sync_fn!(
+                "clock_res_get",
+                (vec![ValType::I32, ValType::I64], vec![ValType::I32]),
+                clock_res_get
+            ),
+            sync_fn!(
+                "clock_time_get",
+                (
+                    vec![ValType::I32, ValType::I64, ValType::I32],
+                    vec![ValType::I32],
+                ),
+                clock_time_get
+            ),
+            sync_fn!(
+                "random_get",
+                (vec![ValType::I32, ValType::I32], vec![ValType::I32]),
+                random_get
+            ),
+            sync_fn!(
+                "fd_prestat_get",
+                (vec![ValType::I32, ValType::I32], vec![ValType::I32]),
+                fd_prestat_get
+            ),
+            sync_fn!(
+                "fd_prestat_dir_name",
+                (
+                    vec![ValType::I32, ValType::I32, ValType::I32],
+                    vec![ValType::I32],
+                ),
+                fd_prestat_dir_name
+            ),
+            sync_fn!(
+                "fd_renumber",
+                (vec![ValType::I32, ValType::I32], vec![ValType::I32]),
+                fd_renumber
+            ),
+            sync_fn!(
+                "fd_advise",
+                (
+                    vec![ValType::I32, ValType::I64, ValType::I64, ValType::I32],
+                    vec![ValType::I32],
+                ),
+                fd_advise
+            ),
+            sync_fn!(
+                "fd_allocate",
+                (
+                    vec![ValType::I32, ValType::I64, ValType::I64],
+                    vec![ValType::I32],
+                ),
+                fd_allocate
+            ),
+            sync_fn!(
+                "fd_close",
+                (vec![ValType::I32], vec![ValType::I32]),
+                fd_close
+            ),
+            sync_fn!(
+                "fd_seek",
+                (
+                    vec![ValType::I32, ValType::I64, ValType::I32, ValType::I32],
+                    vec![ValType::I32],
+                ),
+                fd_seek
+            ),
+            sync_fn!("fd_sync", (vec![ValType::I32], vec![ValType::I32]), fd_sync),
+            sync_fn!(
+                "fd_datasync",
+                (vec![ValType::I32], vec![ValType::I32]),
+                fd_datasync
+            ),
+            sync_fn!(
+                "fd_tell",
+                (vec![ValType::I32, ValType::I32], vec![ValType::I32]),
+                fd_tell
+            ),
+            sync_fn!(
+                "fd_fdstat_get",
+                (vec![ValType::I32, ValType::I32], vec![ValType::I32]),
+                fd_fdstat_get
+            ),
+            sync_fn!(
+                "fd_fdstat_set_flags",
+                (vec![ValType::I32, ValType::I32], vec![ValType::I32]),
+                fd_fdstat_set_flags
+            ),
+            sync_fn!(
+                "fd_fdstat_set_rights",
+                (
+                    vec![ValType::I32, ValType::I64, ValType::I64],
+                    vec![ValType::I32],
+                ),
+                fd_fdstat_set_rights
+            ),
+            sync_fn!(
+                "fd_filestat_get",
+                (vec![ValType::I32, ValType::I32], vec![ValType::I32]),
+                fd_filestat_get
+            ),
+            sync_fn!(
+                "fd_filestat_set_size",
+                (vec![ValType::I32, ValType::I32], vec![ValType::I32]),
+                fd_filestat_set_size
+            ),
+            sync_fn!(
+                "fd_filestat_set_times",
+                (
+                    vec![ValType::I32, ValType::I64, ValType::I64, ValType::I32],
+                    vec![ValType::I32],
+                ),
+                fd_filestat_set_times
+            ),
+            sync_fn!(
+                "fd_read",
+                (
+                    vec![ValType::I32, ValType::I32, ValType::I32, ValType::I32],
+                    vec![ValType::I32],
+                ),
+                fd_read
+            ),
+            sync_fn!(
+                "fd_pread",
+                (
+                    vec![
+                        ValType::I32,
+                        ValType::I32,
+                        ValType::I32,
+                        ValType::I64,
+                        ValType::I32,
+                    ],
+                    vec![ValType::I32],
+                ),
+                fd_pread
+            ),
+            sync_fn!(
+                "fd_write",
+                (
+                    vec![ValType::I32, ValType::I32, ValType::I32, ValType::I32],
+                    vec![ValType::I32],
+                ),
+                fd_write
+            ),
+            sync_fn!(
+                "fd_pwrite",
+                (
+                    vec![
+                        ValType::I32,
+                        ValType::I32,
+                        ValType::I32,
+                        ValType::I64,
+                        ValType::I32,
+                    ],
+                    vec![ValType::I32],
+                ),
+                fd_pwrite
+            ),
+            sync_fn!(
+                "fd_readdir",
+                (
+                    vec![
+                        ValType::I32,
+                        ValType::I32,
+                        ValType::I32,
+                        ValType::I64,
+                        ValType::I32,
+                    ],
+                    vec![ValType::I32],
+                ),
+                fd_readdir
+            ),
+            sync_fn!(
+                "path_create_directory",
+                (
+                    vec![ValType::I32, ValType::I32, ValType::I32],
+                    vec![ValType::I32],
+                ),
+                path_create_directory
+            ),
+            sync_fn!(
+                "path_filestat_get",
+                (
+                    vec![
+                        ValType::I32,
+                        ValType::I32,
+                        ValType::I32,
+                        ValType::I32,
+                        ValType::I32,
+                    ],
+                    vec![ValType::I32],
+                ),
+                path_filestat_get
+            ),
+            sync_fn!(
+                "path_filestat_set_times",
+                (
+                    vec![
+                        ValType::I32,
+                        ValType::I32,
+                        ValType::I32,
+                        ValType::I32,
+                        ValType::I64,
+                        ValType::I64,
+                        ValType::I32,
+                    ],
+                    vec![ValType::I32],
+                ),
+                path_filestat_set_times
+            ),
+            sync_fn!(
+                "path_link",
+                (
+                    vec![
+                        ValType::I32,
+                        ValType::I32,
+                        ValType::I32,
+                        ValType::I32,
+                        ValType::I32,
+                        ValType::I32,
+                        ValType::I32,
+                    ],
+                    vec![ValType::I32],
+                ),
+                path_link
+            ),
+            sync_fn!(
+                "path_open",
+                (
+                    vec![
+                        ValType::I32,
+                        ValType::I32,
+                        ValType::I32,
+                        ValType::I32,
+                        ValType::I32,
+                        ValType::I64,
+                        ValType::I64,
+                        ValType::I32,
+                        ValType::I32,
+                    ],
+                    vec![ValType::I32],
+                ),
+                path_open
+            ),
+            sync_fn!(
+                "path_readlink",
+                (
+                    vec![
+                        ValType::I32,
+                        ValType::I32,
+                        ValType::I32,
+                        ValType::I32,
+                        ValType::I32,
+                        ValType::I32,
+                    ],
+                    vec![ValType::I32],
+                ),
+                path_readlink
+            ),
+            sync_fn!(
+                "path_remove_directory",
+                (
+                    vec![ValType::I32, ValType::I32, ValType::I32],
+                    vec![ValType::I32],
+                ),
+                path_remove_directory
+            ),
+            sync_fn!(
+                "path_rename",
+                (
+                    vec![
+                        ValType::I32,
+                        ValType::I32,
+                        ValType::I32,
+                        ValType::I32,
+                        ValType::I32,
+                        ValType::I32,
+                    ],
+                    vec![ValType::I32],
+                ),
+                path_rename
+            ),
+            sync_fn!(
+                "path_rename",
+                (
+                    vec![
+                        ValType::I32,
+                        ValType::I32,
+                        ValType::I32,
+                        ValType::I32,
+                        ValType::I32,
+                    ],
+                    vec![ValType::I32],
+                ),
+                path_rename
+            ),
+            sync_fn!(
+                "path_unlink_file",
+                (
+                    vec![ValType::I32, ValType::I32, ValType::I32],
+                    vec![ValType::I32],
+                ),
+                path_unlink_file
+            ),
+            sync_fn!("proc_exit", (vec![ValType::I32], vec![]), proc_exit),
+            sync_fn!(
+                "proc_raise",
+                (vec![ValType::I32], vec![ValType::I32]),
+                proc_raise
+            ),
+            sync_fn!("sched_yield", (vec![], vec![ValType::I32]), sched_yield),
+            sync_fn!(
+                "sock_open",
+                (
+                    vec![ValType::I32, ValType::I32, ValType::I32],
+                    vec![ValType::I32],
+                ),
+                sock_open
+            ),
+            sync_fn!(
+                "sock_bind",
+                (
+                    vec![ValType::I32, ValType::I32, ValType::I32],
+                    vec![ValType::I32],
+                ),
+                sock_bind
+            ),
+            sync_fn!(
+                "sock_bind_device",
+                (
+                    vec![ValType::I32, ValType::I32, ValType::I32],
+                    vec![ValType::I32],
+                ),
+                sock_bind_device
+            ),
+            sync_fn!(
+                "sock_listen",
+                (vec![ValType::I32, ValType::I32], vec![ValType::I32]),
+                sock_listen
+            ),
+            async_fn!(
+                "sock_accept",
+                (vec![ValType::I32, ValType::I32], vec![ValType::I32]),
+                sock_accept
+            ),
+            async_fn!(
+                "sock_connect",
+                (
+                    vec![ValType::I32, ValType::I32, ValType::I32],
+                    vec![ValType::I32],
+                ),
+                sock_connect
+            ),
+            async_fn!(
+                "sock_recv",
+                (
+                    vec![
+                        ValType::I32,
+                        ValType::I32,
+                        ValType::I32,
+                        ValType::I32,
+                        ValType::I32,
+                        ValType::I32,
+                    ],
+                    vec![ValType::I32],
+                ),
+                sock_recv
+            ),
+            async_fn!(
+                "sock_recv_from",
+                (
+                    vec![
+                        ValType::I32,
+                        ValType::I32,
+                        ValType::I32,
+                        ValType::I32,
+                        ValType::I32,
+                        ValType::I32,
+                        ValType::I32,
+                        ValType::I32,
+                    ],
+                    vec![ValType::I32],
+                ),
+                sock_recv_from
+            ),
+            async_fn!(
+                "sock_send",
+                (
+                    vec![
+                        ValType::I32,
+                        ValType::I32,
+                        ValType::I32,
+                        ValType::I32,
+                        ValType::I32,
+                    ],
+                    vec![ValType::I32],
+                ),
+                sock_send
+            ),
+            async_fn!(
+                "sock_send_to",
+                (
+                    vec![
+                        ValType::I32,
+                        ValType::I32,
+                        ValType::I32,
+                        ValType::I32,
+                        ValType::I32,
+                        ValType::I32,
+                        ValType::I32,
+                    ],
+                    vec![ValType::I32],
+                ),
+                sock_send_to
+            ),
+            sync_fn!(
+                "sock_shutdown",
+                (vec![ValType::I32, ValType::I32], vec![ValType::I32]),
+                sock_shutdown
+            ),
+            sync_fn!(
+                "sock_getpeeraddr",
+                (
+                    vec![ValType::I32, ValType::I32, ValType::I32, ValType::I32],
+                    vec![ValType::I32],
+                ),
+                sock_getpeeraddr
+            ),
+            sync_fn!(
+                "sock_getlocaladdr",
+                (
+                    vec![ValType::I32, ValType::I32, ValType::I32, ValType::I32],
+                    vec![ValType::I32],
+                ),
+                sock_getlocaladdr
+            ),
+            sync_fn!(
+                "sock_getsockopt",
+                (
+                    vec![
+                        ValType::I32,
+                        ValType::I32,
+                        ValType::I32,
+                        ValType::I32,
+                        ValType::I32,
+                    ],
+                    vec![ValType::I32],
+                ),
+                sock_getlocaladdr
+            ),
+            sync_fn!(
+                "sock_setsockopt",
+                (
+                    vec![
+                        ValType::I32,
+                        ValType::I32,
+                        ValType::I32,
+                        ValType::I32,
+                        ValType::I32,
+                    ],
+                    vec![ValType::I32],
+                ),
+                sock_setsockopt
+            ),
+            async_fn!(
+                "poll_oneoff",
+                (
+                    vec![ValType::I32, ValType::I32, ValType::I32, ValType::I32],
+                    vec![ValType::I32],
+                ),
+                poll_oneoff
+            ),
+            async_fn!(
+                "sock_lookup_ip",
+                (
+                    vec![
+                        ValType::I32,
+                        ValType::I32,
+                        ValType::I32,
+                        ValType::I32,
+                        ValType::I32,
+                        ValType::I32,
+                    ],
+                    vec![ValType::I32],
+                ),
+                sock_lookup_ip
+            ),
+        ];
+        module
+    }
+
+    pub fn with_wasi_ctx_and_impls(wasi_ctx: WasiCtx, impls: Vec<WasiFunc>) -> Option<Self> {
+        let wasi_ctx = AsyncWasiCtx {
+            wasi_ctx,
+            #[cfg(feature = "wasi_serialize")]
+            yield_hook: None,
+        };
+        let mut module = ImportModule::create("wasi_snapshot_preview1", wasi_ctx).ok()?;
+        for f in impls {
+            match f {
+                WasiFunc::SyncFn(name, ty, f) => {
+                    module.add_sync_func(&name, ty, f).ok()?;
+                }
+                WasiFunc::AsyncFn(name, ty, f) => unsafe {
+                    module.add_async_func_uncheck(&name, ty, f).ok()?;
+                },
+            }
+        }
+        Some(AsyncWasiImport(module))
     }
 
     pub fn with_wasi_ctx(wasi_ctx: WasiCtx) -> Option<Self> {
