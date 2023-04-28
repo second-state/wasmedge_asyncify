@@ -430,14 +430,6 @@ impl AsyncWasiImport {
                 sock_bind
             ),
             sync_fn!(
-                "sock_bind_device",
-                (
-                    vec![ValType::I32, ValType::I32, ValType::I32],
-                    vec![ValType::I32],
-                ),
-                sock_bind_device
-            ),
-            sync_fn!(
                 "sock_listen",
                 (vec![ValType::I32, ValType::I32], vec![ValType::I32]),
                 sock_listen
@@ -1049,16 +1041,6 @@ impl AsyncWasiImport {
                     vec![ValType::I32],
                 ),
                 sock_bind,
-            )
-            .ok()?;
-        module
-            .add_sync_func(
-                "sock_bind_device",
-                (
-                    vec![ValType::I32, ValType::I32, ValType::I32],
-                    vec![ValType::I32],
-                ),
-                sock_bind_device,
             )
             .ok()?;
 
@@ -2253,30 +2235,6 @@ pub fn sock_bind<'a, T>(
             fd,
             WasmPtr::from(addr_ptr),
             port,
-        )))
-    } else {
-        Err(func_type_miss_match_error())
-    }
-}
-
-pub fn sock_bind_device<'a, T>(
-    _: &'a mut T,
-    mem: &'a mut Memory,
-    ctx: &'a mut AsyncWasiCtx,
-    args: Vec<types::WasmVal>,
-) -> Result<Vec<WasmVal>, CoreError> {
-    log::trace!("sock_bind_device enter {args:?}");
-    let n = 3;
-    if let Some([WasmVal::I32(p1), WasmVal::I32(p2), WasmVal::I32(p3)]) = args.get(0..n) {
-        let fd = *p1;
-        let name_ptr = *p2 as usize;
-        let name_len = *p3 as u32;
-        Ok(to_wasm_return(p::async_socket::sock_bind_device(
-            &mut ctx.wasi_ctx,
-            mem,
-            fd,
-            WasmPtr::from(name_ptr),
-            name_len,
         )))
     } else {
         Err(func_type_miss_match_error())
