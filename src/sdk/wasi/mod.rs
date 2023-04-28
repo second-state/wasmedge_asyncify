@@ -550,7 +550,7 @@ impl AsyncWasiImport {
                     ],
                     vec![ValType::I32],
                 ),
-                sock_getlocaladdr
+                sock_getsockopt
             ),
             sync_fn!(
                 "sock_setsockopt",
@@ -1198,7 +1198,7 @@ impl AsyncWasiImport {
                     ],
                     vec![ValType::I32],
                 ),
-                sock_getlocaladdr,
+                sock_getsockopt,
             )
             .ok()?;
         module
